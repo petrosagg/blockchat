@@ -1,155 +1,132 @@
-use std::collections::{HashSet, HashMap};
+use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{Receiver, Sender};
 use std::time::SystemTime;
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
-use crate::crypto::{PublicKey, PrivateKey, Signature, Hash};
+use crate::crypto::{Hash, PrivateKey, PublicKey, Signature, Signed};
 use crate::error::Result;
+use crate::wallet::{Transaction, Wallet};
 
 pub struct Node {
-    id: usize,
-    /// The number of transactions contained in each block.
+    /// The maximum number of transactions contained in each block.
     capacity: usize,
     /// The set of signed but not necessarily valid transactions waiting to be included in a block.
-    pending_transactions: HashSet<SignedTransaction>,
+    pending_transactions: HashSet<Signed<Transaction>>,
     /// The current blockchain.
-    blockchain: Vec<Block>,
-    /// The public key of this wallet.
-    stake_state: Vec<StakeState>,
-    /// The private key of this wallet.
-    private_key: PrivateKey,
-    wallet_state: HashMap<PublicKey, WalletState>,
+    blockchain: Vec<Signed<Block>>,
+    /// The wallet of this node.
+    wallet: Wallet,
+    /// The balances per public key.
+    balances: HashMap<PublicKey, u64>,
+    /// The stake amounts per public key.
+    stake_pool: HashMap<PublicKey, u64>,
+    /// A receiver of messages from someone in the network.
     rx: Receiver<Message>,
+    /// A sender of messages that will be broadcasted to everyone.
     tx: Sender<Message>,
 }
 
 impl Node {
+    fn new(
+        wallet: Wallet,
+        blockchain: Vec<Signed<Block>>,
+        capacity: usize,
+        tx: Sender<Message>,
+        rx: Receiver<Message>,
+    ) -> Self {
+        Self {
+            capacity,
+            pending_transactions: HashSet::new(),
+            blockchain,
+            wallet,
+            // Calculate the balances based on the provided blockchain
+            balances: HashMap::new(),
+            // Calculate the stake pool based on the provided blockchain
+            stake_pool: HashMap::new(),
+            rx,
+            tx,
+        }
+    }
+
     /// Adds a transaction in the set of pending transactions
-    fn receive_transaction(&mut self) {
+    fn handle_transaction(&mut self, tx: Signed<Transaction>) {
+        // 1. Validate signature
+        // 2. Validate that there is enough balance
+        self.pending_transactions.insert(tx);
     }
 
     /// Attempts to append the given block to the tip of the maintained blockchain. Returns an
     /// error if the block is invalid.
-    fn append_block(&mut self) -> Result<()> {
+    fn handle_block(&mut self, block: Signed<Block>) {
+        // 1. validate that this block came from the leader and contains valid transactions.
+        // 2. remove transactions referenced in the block from pending transactions
+        // 3. update stake pool and wallet state
         todo!()
     }
 
-    /// Mints a block by waitng for `capacity` valid transactions to appear.
-   fn mint_block(&mut self) -> Result<Block> {
-       // 1. Take at most `self.capacity` valid txs from current set
-       // 2. Wait for more txs from the network if current set was insufficient
-       // 3. Sign new block 
-       todo!()
+    /// Mints a block with at most `capacity` transactions.
+    fn mint_block(&mut self) -> Signed<Block> {
+        todo!()
     }
 
-   /// Validates the proposed block against the current tip
-   fn validate_block(&mut self, block: &Block) -> Result<()> {
-       todo!()
-   }
+    fn step(&mut self) {
+        // First handle all pending messages from the network
+        while let Ok(msg) = self.rx.try_recv() {
+            match msg {
+                Message::Transaction(tx) => self.handle_transaction(tx),
+                Message::Block(block) => self.handle_block(block),
+            }
+        }
+        // If the pending block has reached `capacity` transactions, mint it and broadcast it.
+    }
 }
 
 pub enum Message {
-    Transaction(SignedTransaction),
-    Block(SignedBlock),
-}
-
-pub struct StakeState {
-    public_key: PublicKey,
-    stake: u64,
-}
-
-pub struct WalletState {
-    balance: u64,
-}
-
-pub struct Wallet {
-    /// The public key of this wallet.
-    pub public_key: PublicKey,
-    /// The private key of this wallet.
-    private_key: PrivateKey,
-    /// An auto-increment nonce used to sign transactions.
-    nonce: u64,
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
-pub struct SignedBlock {
-    /// The hash of the block.
-    hash: Hash,
-    /// The signature of the block.
-    signature: Signature,
-    // The actual block data.
-    block: Block,
+    Transaction(Signed<Transaction>),
+    Block(Signed<Block>),
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub struct Block {
-    /// The auto-increment index of this block.
-    index: u64,
     /// The creation timestamp of this block
     // TODO: change this to a type from `chrono`
     timestamp: SystemTime,
     /// The list of transactions contained in this block.
-    transactions: Vec<SignedTransaction>,
+    transactions: Vec<Signed<Transaction>>,
     /// The public key of the node that minted this block.
     validator: PublicKey,
     /// The hash of the parent block.
-    previous_hash: Hash,
+    parent_hash: Hash,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
-pub struct SignedTransaction {
-    /// The hash of this transaction.
-    hash: Hash,
-    /// A signature proving that the sender wallet created this transaction.
-    signature: Signature,
-    /// The tx data being signed,
-    tx: Transaction,
+#[derive(Clone, Default)]
+pub struct StakeState {
+    stake: u64,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
-pub struct Transaction {
-    /// The public key of the sending wallet.
-    sender_address: PublicKey,
-    /// The public key of the receiving wallet.
-    receiver_address: PublicKey,
-    /// The kind of this transaction.
-    kind: TransactionKind,
-    /// The sender nonce.
-    nonce: usize,
-}
+#[cfg(test)]
+mod test {
+    use std::sync::mpsc;
 
-impl Wallet {
-    fn new() -> Self {
-        todo!()
-    }
+    use super::*;
 
-    fn create_coin_transaction(&self, /* args */) -> Transaction {
-        todo!()
-    }
+    #[test]
+    fn basic_test() {
+        let (tx, node_rx) = mpsc::channel();
+        let (node_tx, rx) = mpsc::channel();
 
-    fn create_message_transaction(&self, /* args */) -> Transaction {
-        todo!()
-    }
+        let node_wallet = Wallet::new();
+        let mut node = Node::new(node_wallet, vec![], 5, node_tx, node_rx);
+        node.step();
 
-    fn broadcast_transaction(&self, tx: SignedTransaction) {
-    }
+        // Now create a transaction from a wallet that is not tracked and send it to the node
+        let mut user_wallet = Wallet::new();
+        let transaction = user_wallet.sign_coin_transaction(&node.wallet.public_key, 42);
+        let _ = tx.send(Message::Transaction(transaction));
 
-
-    fn sign_transaction(&self, tx: Transaction) -> SignedTransaction {
-        // 1. Calculate the hash of the transaction
-        // 2. Sign it using the provided key
-        todo!()
+        // Now we step the node which should observe the transaction and ignore it.
+        node.step();
+        assert!(node.pending_transactions.is_empty());
     }
 }
-
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
-pub enum TransactionKind {
-    /// A coin transaction transferring the specified amount.
-    Coin(u64),
-    /// A message transaction transferring the specified message.
-    Message(String),
-    // TODO: consider adding a stake variant to record stake state in the blockchain
-    
-}
-

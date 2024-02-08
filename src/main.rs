@@ -7,11 +7,12 @@ use std::{
 use clap::Parser;
 use serde::{Deserialize, Serialize};
 
-pub mod broadcast;
-pub mod bootstrap;
-pub mod crypto;
 pub mod backend;
+pub mod bootstrap;
+pub mod broadcast;
+pub mod crypto;
 pub mod error;
+pub mod wallet;
 
 /// Simple program to greet a person
 #[derive(Parser, Debug)]
