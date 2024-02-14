@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 pub mod backend;
 pub mod bootstrap;
-pub mod broadcast;
+pub mod network;
 pub mod crypto;
 pub mod error;
 pub mod wallet;
