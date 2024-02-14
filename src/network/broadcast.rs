@@ -2,7 +2,7 @@
 
 use std::io::{BufRead, BufReader, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
-use std::sync::mpsc::{Receiver, self, Sender};
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::Duration;
 
 use serde::de::DeserializeOwned;
@@ -35,7 +35,7 @@ impl<T: Serialize + DeserializeOwned + Clone + Send + 'static> Broadcaster<T> {
                         }
                         Ok(_) => {
                             read_tx.send(serde_json::from_str(&buf).unwrap()).unwrap();
-                        },
+                        }
                         Err(err) => {
                             println!("Connection error: {err}");
                             return;
@@ -54,7 +54,11 @@ impl<T: Serialize + DeserializeOwned + Clone + Send + 'static> Broadcaster<T> {
             });
             write_txs.push(write_tx);
         }
-        Self { write_txs, read_rx, buffer: None }
+        Self {
+            write_txs,
+            read_rx,
+            buffer: None,
+        }
     }
 }
 
@@ -78,7 +82,6 @@ impl<T: Serialize + DeserializeOwned + Clone + Send + 'static> Network<T> for Br
         }
     }
 }
-
 
 /// Creates a TCP stream for all peers.
 fn create_sockets(peers: &[SocketAddr], my_index: usize) -> Vec<TcpStream> {
@@ -108,11 +111,11 @@ fn start_connections(peers: &[SocketAddr]) -> Vec<TcpStream> {
                     stream.set_nodelay(true).expect("set_nodelay call failed");
                     streams.push(stream);
                     break;
-                },
+                }
                 Err(error) => {
                     println!("Failed connecting to {peer}: {error}");
                     std::thread::sleep(Duration::from_millis(200));
-                },
+                }
             }
         }
     }
@@ -131,7 +134,6 @@ fn await_connections(listen_addr: SocketAddr, expected_peers: usize) -> Vec<TcpS
     }
     streams
 }
-
 
 #[cfg(test)]
 mod test {

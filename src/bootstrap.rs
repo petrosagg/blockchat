@@ -7,7 +7,7 @@ use std::net::SocketAddr;
 
 use crate::backend::Message;
 use crate::network::broadcast::Broadcaster;
-use crate::network::discovery::{discover_peers, bootstrap_helper};
+use crate::network::discovery::{bootstrap_helper, discover_peers};
 use crate::wallet::Wallet;
 
 pub struct BootstrapConfig {
@@ -30,7 +30,11 @@ fn bootstrap(config: BootstrapConfig) {
         std::thread::spawn(move || bootstrap_helper(config.bootstrap_addr, config.peers));
     }
 
-    let (my_index, peer_addrs, _peer_public_keys) = discover_peers(config.bootstrap_addr, config.listen_addr, config.wallet.public_key);
+    let (my_index, peer_addrs, _peer_public_keys) = discover_peers(
+        config.bootstrap_addr,
+        config.listen_addr,
+        config.wallet.public_key,
+    );
 
     let _broadcaster = Broadcaster::<Message>::new(&peer_addrs, my_index);
 

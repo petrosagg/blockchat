@@ -1,5 +1,8 @@
-use std::{io::{BufReader, BufRead, Write}, net::TcpStream, sync::mpsc::{Sender, Receiver, self}};
-
+use std::{
+    io::{BufRead, BufReader, Write},
+    net::TcpStream,
+    sync::mpsc::{self, Receiver, Sender},
+};
 
 use serde::{de::DeserializeOwned, Serialize};
 

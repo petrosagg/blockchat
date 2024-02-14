@@ -106,8 +106,6 @@ pub struct StakeState {
 
 #[cfg(test)]
 mod test {
-    use std::sync::mpsc;
-
     use crate::network::TestNetwork;
 
     use super::*;

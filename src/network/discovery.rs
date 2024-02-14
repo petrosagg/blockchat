@@ -1,13 +1,19 @@
-use std::{net::{SocketAddr, TcpStream, TcpListener}, time::Duration};
+use std::{
+    net::{SocketAddr, TcpListener, TcpStream},
+    time::Duration,
+};
 
 use serde::{de::DeserializeOwned, Serialize};
 
 use crate::network::TypedJsonStream;
 
-
 /// Connects to the specified bootstrap server and returns a list of addreses for all the nodes in
 /// the network.
-pub fn discover_peers<D: Serialize + DeserializeOwned>(bootstrap_addr: SocketAddr, my_addr: SocketAddr, data: D) -> (usize, Vec<SocketAddr>, Vec<D>) {
+pub fn discover_peers<D: Serialize + DeserializeOwned>(
+    bootstrap_addr: SocketAddr,
+    my_addr: SocketAddr,
+    data: D,
+) -> (usize, Vec<SocketAddr>, Vec<D>) {
     let socket = loop {
         match TcpStream::connect(bootstrap_addr) {
             Ok(stream) => break stream,
@@ -22,7 +28,10 @@ pub fn discover_peers<D: Serialize + DeserializeOwned>(bootstrap_addr: SocketAdd
     let my_index: usize = stream.recv();
     let peer_addrs: Vec<SocketAddr> = stream.recv();
     let peer_data: Vec<String> = stream.recv();
-    let peer_data = peer_data.into_iter().map(|data| serde_json::from_str(&data).unwrap()).collect();
+    let peer_data = peer_data
+        .into_iter()
+        .map(|data| serde_json::from_str(&data).unwrap())
+        .collect();
     (my_index, peer_addrs, peer_data)
 }
 
