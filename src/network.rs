@@ -33,4 +33,17 @@ impl TypedJsonStream {
         self.stream.read_line(&mut self.buf).unwrap();
         serde_json::from_str(&self.buf).unwrap()
     }
+
+    fn send_raw(&mut self, msg: &str) {
+        assert!(!msg.contains('\n'));
+        self.stream.get_mut().write_all(msg.as_bytes());
+        self.stream.get_mut().write_all(&[b'\n']).unwrap();
+        self.stream.get_mut().flush().unwrap();
+    }
+
+    fn recv_raw(&mut self) -> &str {
+        self.buf.clear();
+        self.stream.read_line(&mut self.buf).unwrap();
+        &self.buf
+    }
 }
