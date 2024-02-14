@@ -1,4 +1,4 @@
-use std::net::{SocketAddr, TcpStream, TcpListener};
+use std::{net::{SocketAddr, TcpStream, TcpListener}, time::Duration};
 
 use serde::{de::DeserializeOwned, Serialize};
 
@@ -7,12 +7,18 @@ use crate::network::TypedJsonStream;
 
 /// Connects to the specified bootstrap server and returns a list of addreses for all the nodes in
 /// the network.
-fn discover_peers<D: Serialize + DeserializeOwned>(bootstrap_addr: SocketAddr, my_addr: SocketAddr, data: D) -> (usize, Vec<SocketAddr>, Vec<D>) {
-    let socket = TcpStream::connect(bootstrap_addr).unwrap();
+pub fn discover_peers<D: Serialize + DeserializeOwned>(bootstrap_addr: SocketAddr, my_addr: SocketAddr, data: D) -> (usize, Vec<SocketAddr>, Vec<D>) {
+    let socket = loop {
+        match TcpStream::connect(bootstrap_addr) {
+            Ok(stream) => break stream,
+            // TODO(petrosagg): replace with retry crate
+            Err(_) => std::thread::sleep(Duration::from_millis(200)),
+        }
+    };
     let mut stream = TypedJsonStream::new(socket);
 
     stream.send(&my_addr);
-    stream.send(&data);
+    stream.send(&serde_json::to_string(&data).unwrap());
     let my_index: usize = stream.recv();
     let peer_addrs: Vec<SocketAddr> = stream.recv();
     let peer_data: Vec<String> = stream.recv();
@@ -20,17 +26,17 @@ fn discover_peers<D: Serialize + DeserializeOwned>(bootstrap_addr: SocketAddr, m
     (my_index, peer_addrs, peer_data)
 }
 
-fn bootstrap_helper(bootstrap_addr: SocketAddr, expected_peers: usize) {
+pub fn bootstrap_helper(bootstrap_addr: SocketAddr, expected_peers: usize) {
     let listener = TcpListener::bind(bootstrap_addr).unwrap();
 
     let mut streams = vec![];
     let mut peer_addrs = vec![];
     let mut peer_data = vec![];
     for _ in 0..expected_peers {
-        let mut socket = listener.accept().unwrap().0;
+        let socket = listener.accept().unwrap().0;
         let mut stream = TypedJsonStream::new(socket);
         let addr = stream.recv::<SocketAddr>();
-        let data = stream.recv_raw().to_owned();
+        let data = stream.recv::<String>();
         let index = streams.len();
         streams.push((index, stream));
         peer_addrs.push(addr);
@@ -50,7 +56,7 @@ mod test {
 
     #[test]
     fn basic_discovery() {
-        let bootstrap_addr = "127.0.0.1:7000".parse().unwrap();
+        let bootstrap_addr = "127.0.0.1:7001".parse().unwrap();
         let addr1 = "127.0.0.1:6000".parse().unwrap();
         let addr2 = "127.0.0.1:6001".parse().unwrap();
         let addr3 = "127.0.0.1:6002".parse().unwrap();

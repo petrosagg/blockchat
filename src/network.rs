@@ -1,9 +1,10 @@
-use std::{io::{BufReader, BufRead, Write}, net::TcpStream};
+use std::{io::{BufReader, BufRead, Write}, net::TcpStream, sync::mpsc::{Sender, Receiver, self}};
+
 
 use serde::{de::DeserializeOwned, Serialize};
 
-mod broadcast;
-mod discovery;
+pub mod broadcast;
+pub mod discovery;
 
 /// A wrapper over a TCP connection that is able to send and receive data using line delimited
 /// JSON.
@@ -33,17 +34,56 @@ impl TypedJsonStream {
         self.stream.read_line(&mut self.buf).unwrap();
         serde_json::from_str(&self.buf).unwrap()
     }
+}
 
-    fn send_raw(&mut self, msg: &str) {
-        assert!(!msg.contains('\n'));
-        self.stream.get_mut().write_all(msg.as_bytes());
-        self.stream.get_mut().write_all(&[b'\n']).unwrap();
-        self.stream.get_mut().flush().unwrap();
+pub trait Network<T> {
+    fn await_events(&mut self);
+
+    fn recv(&mut self) -> Option<T>;
+
+    fn send(&mut self, msg: &T);
+}
+
+/// An in-memory testing network to help with unit testing
+pub struct TestNetwork<T> {
+    rx: Receiver<T>,
+    tx: Sender<T>,
+    buffer: Option<T>,
+}
+
+impl<T> TestNetwork<T> {
+    pub fn new() -> (Self, Self) {
+        let (tx1, rx1) = mpsc::channel();
+        let (tx2, rx2) = mpsc::channel();
+        let network1 = Self {
+            rx: rx1,
+            tx: tx2,
+            buffer: None,
+        };
+        let network2 = Self {
+            rx: rx2,
+            tx: tx1,
+            buffer: None,
+        };
+        (network1, network2)
+    }
+}
+
+impl<T: Send + Clone> Network<T> for TestNetwork<T> {
+    fn await_events(&mut self) {
+        if self.buffer.is_none() {
+            self.buffer = self.rx.recv().ok();
+        }
     }
 
-    fn recv_raw(&mut self) -> &str {
-        self.buf.clear();
-        self.stream.read_line(&mut self.buf).unwrap();
-        &self.buf
+    fn recv(&mut self) -> Option<T> {
+        match self.buffer.take() {
+            Some(msg) => Some(msg),
+            None => self.rx.try_recv().ok(),
+        }
+    }
+
+    fn send(&mut self, msg: &T) {
+        self.tx.send(msg.clone()).unwrap();
     }
 }

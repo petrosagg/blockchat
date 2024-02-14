@@ -1,11 +1,13 @@
+// Remove this when it's not a WIP
+#![allow(dead_code)]
+
 use std::collections::{HashMap, HashSet};
-use std::sync::mpsc::{Receiver, Sender};
 use std::time::SystemTime;
 
 use serde::{Deserialize, Serialize};
 
-use crate::crypto::{Hash, PrivateKey, PublicKey, Signature, Signed};
-use crate::error::Result;
+use crate::crypto::{Hash, PublicKey, Signed};
+use crate::network::Network;
 use crate::wallet::{Transaction, Wallet};
 
 pub struct Node {
@@ -21,10 +23,8 @@ pub struct Node {
     balances: HashMap<PublicKey, u64>,
     /// The stake amounts per public key.
     stake_pool: HashMap<PublicKey, u64>,
-    /// A receiver of messages from someone in the network.
-    rx: Receiver<Message>,
-    /// A sender of messages that will be broadcasted to everyone.
-    tx: Sender<Message>,
+    /// This node's handle to the network
+    network: Box<dyn Network<Message>>,
 }
 
 impl Node {
@@ -32,8 +32,7 @@ impl Node {
         wallet: Wallet,
         blockchain: Vec<Signed<Block>>,
         capacity: usize,
-        tx: Sender<Message>,
-        rx: Receiver<Message>,
+        network: impl Network<Message> + 'static,
     ) -> Self {
         Self {
             capacity,
@@ -44,8 +43,7 @@ impl Node {
             balances: HashMap::new(),
             // Calculate the stake pool based on the provided blockchain
             stake_pool: HashMap::new(),
-            rx,
-            tx,
+            network: Box::new(network),
         }
     }
 
@@ -58,7 +56,7 @@ impl Node {
 
     /// Attempts to append the given block to the tip of the maintained blockchain. Returns an
     /// error if the block is invalid.
-    fn handle_block(&mut self, block: Signed<Block>) {
+    fn handle_block(&mut self, _block: Signed<Block>) {
         // 1. validate that this block came from the leader and contains valid transactions.
         // 2. remove transactions referenced in the block from pending transactions
         // 3. update stake pool and wallet state
@@ -72,16 +70,17 @@ impl Node {
 
     fn step(&mut self) {
         // First handle all pending messages from the network
-        while let Ok(msg) = self.rx.try_recv() {
+        self.network.await_events();
+        while let Some(msg) = self.network.recv() {
             match msg {
                 Message::Transaction(tx) => self.handle_transaction(tx),
                 Message::Block(block) => self.handle_block(block),
             }
         }
-        // If the pending block has reached `capacity` transactions, mint it and broadcast it.
     }
 }
 
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum Message {
     Transaction(Signed<Transaction>),
     Block(Signed<Block>),
@@ -109,24 +108,23 @@ pub struct StakeState {
 mod test {
     use std::sync::mpsc;
 
+    use crate::network::TestNetwork;
+
     use super::*;
 
     #[test]
     fn basic_test() {
-        let (tx, node_rx) = mpsc::channel();
-        let (node_tx, rx) = mpsc::channel();
+        let (network1, mut network2) = TestNetwork::new();
 
         let node_wallet = Wallet::new();
-        let mut node = Node::new(node_wallet, vec![], 5, node_tx, node_rx);
-        node.step();
+        let mut node = Node::new(node_wallet, vec![], 5, network1);
 
         // Now create a transaction from a wallet that is not tracked and send it to the node
         let mut user_wallet = Wallet::new();
         let transaction = user_wallet.sign_coin_transaction(&node.wallet.public_key, 42);
-        let _ = tx.send(Message::Transaction(transaction));
+        network2.send(&Message::Transaction(transaction));
 
-        // Now we step the node which should observe the transaction and ignore it.
         node.step();
-        assert!(node.pending_transactions.is_empty());
+        assert_eq!(node.pending_transactions.len(), 1);
     }
 }

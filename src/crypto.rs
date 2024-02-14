@@ -31,7 +31,7 @@ pub struct Signed<T> {
 }
 
 impl<T: Serialize> Signed<T> {
-    pub fn new(data: T, key: &PrivateKey) -> Self {
+    pub fn new(data: T, _key: &PrivateKey) -> Self {
         // TODO: actually sign this
         Self {
             hash: Hash,

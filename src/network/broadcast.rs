@@ -6,11 +6,14 @@ use std::sync::mpsc::{Receiver, self, Sender};
 use std::time::Duration;
 
 use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
+
+use crate::network::Network;
 
 pub struct Broadcaster<T> {
     write_txs: Vec<Sender<T>>,
     read_rx: Receiver<T>,
+    buffer: Option<T>,
 }
 
 impl<T: Serialize + DeserializeOwned + Clone + Send + 'static> Broadcaster<T> {
@@ -31,7 +34,7 @@ impl<T: Serialize + DeserializeOwned + Clone + Send + 'static> Broadcaster<T> {
                             return;
                         }
                         Ok(_) => {
-                            read_tx.send(serde_json::from_str(&buf).unwrap());
+                            read_tx.send(serde_json::from_str(&buf).unwrap()).unwrap();
                         },
                         Err(err) => {
                             println!("Connection error: {err}");
@@ -51,16 +54,27 @@ impl<T: Serialize + DeserializeOwned + Clone + Send + 'static> Broadcaster<T> {
             });
             write_txs.push(write_tx);
         }
-        Self { write_txs, read_rx }
+        Self { write_txs, read_rx, buffer: None }
+    }
+}
+
+impl<T: Serialize + DeserializeOwned + Clone + Send + 'static> Network<T> for Broadcaster<T> {
+    fn await_events(&mut self) {
+        if self.buffer.is_none() {
+            self.buffer = self.read_rx.recv().ok();
+        }
     }
 
-    pub fn recv(&self) -> T {
-        self.read_rx.recv().unwrap()
+    fn recv(&mut self) -> Option<T> {
+        match self.buffer.take() {
+            Some(msg) => Some(msg),
+            None => self.read_rx.try_recv().ok(),
+        }
     }
 
-    pub fn send(&mut self, msg: &T) {
+    fn send(&mut self, msg: &T) {
         for write_tx in self.write_txs.iter_mut() {
-            write_tx.send(msg.clone());
+            write_tx.send(msg.clone()).unwrap();
         }
     }
 }
@@ -89,7 +103,7 @@ fn start_connections(peers: &[SocketAddr]) -> Vec<TcpStream> {
             println!("Connecting to {peer} attempt {attempt}");
 
             match TcpStream::connect(peer) {
-                Ok(mut stream) => {
+                Ok(stream) => {
                     println!("Successful connection to {peer}");
                     stream.set_nodelay(true).expect("set_nodelay call failed");
                     streams.push(stream);
@@ -111,7 +125,7 @@ fn await_connections(listen_addr: SocketAddr, expected_peers: usize) -> Vec<TcpS
     let listener = TcpListener::bind(listen_addr).unwrap();
 
     for _ in 0..expected_peers {
-        let mut stream = listener.accept().unwrap().0;
+        let stream = listener.accept().unwrap().0;
         stream.set_nodelay(true).expect("set_nodelay call failed");
         streams.push(stream);
     }
@@ -132,16 +146,18 @@ mod test {
         ];
         std::thread::scope(|s| {
             s.spawn(|| {
-                let peer = Broadcaster::<usize>::new(&addrs, 0);
-                assert_eq!(peer.recv(), 42);
+                let mut peer = Broadcaster::<usize>::new(&addrs, 0);
+                peer.await_events();
+                assert_eq!(peer.recv(), Some(42));
             });
             s.spawn(|| {
                 let mut peer = Broadcaster::<usize>::new(&addrs, 1);
                 peer.send(&42);
             });
             s.spawn(|| {
-                let peer = Broadcaster::<usize>::new(&addrs, 2);
-                assert_eq!(peer.recv(), 42);
+                let mut peer = Broadcaster::<usize>::new(&addrs, 2);
+                peer.await_events();
+                assert_eq!(peer.recv(), Some(42));
             });
         })
     }

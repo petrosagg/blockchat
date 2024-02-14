@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::crypto::{self, Hash, PrivateKey, PublicKey, Signature, Signed};
+use crate::crypto::{self, PrivateKey, PublicKey, Signed};
 
 pub struct Wallet {
     /// The public key of this wallet.
@@ -55,7 +55,7 @@ impl Wallet {
         todo!()
     }
 
-    pub fn sign_transaction(&self, tx: Transaction) -> Signed<Transaction> {
+    pub fn sign_transaction(&self, _tx: Transaction) -> Signed<Transaction> {
         // 1. Calculate the hash of the transaction
         // 2. Sign it using the provided key
         todo!()
