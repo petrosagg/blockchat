@@ -28,7 +28,7 @@ impl TypedJsonStream {
 
     fn send<T: Serialize>(&mut self, msg: &T) {
         serde_json::to_writer(self.stream.get_mut(), &msg).unwrap();
-        self.stream.get_mut().write(&[b'\n']).unwrap();
+        self.stream.get_mut().write_all(&[b'\n']).unwrap();
         self.stream.get_mut().flush().unwrap();
     }
 

@@ -48,7 +48,7 @@ impl<T: Serialize + DeserializeOwned + Clone + Send + 'static> Broadcaster<T> {
             std::thread::spawn(move || {
                 while let Ok(msg) = write_rx.recv() {
                     serde_json::to_writer(&mut socket, &msg).unwrap();
-                    socket.write(&[b'\n']).unwrap();
+                    socket.write_all(&[b'\n']).unwrap();
                     socket.flush().unwrap();
                 }
             });
