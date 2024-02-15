@@ -49,7 +49,7 @@ impl Wallet {
             nonce,
         };
 
-        Signed::new(tx, &self.private_key)
+        self.private_key.sign(tx)
     }
 
     pub fn create_message_transaction(&self /* args */) -> Transaction {

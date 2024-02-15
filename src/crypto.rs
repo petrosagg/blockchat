@@ -1,8 +1,14 @@
 //! The definition of all cryptographic primitives used in BlockChat.
 
+use rsa::sha2::Sha256;
 use serde::{Deserialize, Serialize};
 use rsa::{RsaPrivateKey, RsaPublicKey};
+use rsa::pkcs1v15::{Signature, SigningKey, VerifyingKey};
+use rsa::signature::{Signer, Verifier};
+use rsa::signature::SignatureEncoding;
 
+
+pub const KEY_SIZE: usize = 2048;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Hash;
@@ -10,31 +16,42 @@ pub struct Hash;
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct PublicKey(RsaPublicKey);
 
+impl PublicKey {
+    pub fn verify<T: Serialize>(&self, signature: Signed<T>) -> Result<(), rsa::signature::Error> {
+        let verifying_key = VerifyingKey::<Sha256>::new(self.0.clone());
+        let data_encoded = serde_json::to_vec(&(signature.data)).unwrap();
+        let helper: &[u8] = &signature.signature;
+        let signature_decoded = Signature::try_from(helper).unwrap();
+        verifying_key.verify(&data_encoded, &signature_decoded)
+    }
+}
+
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct PrivateKey(RsaPrivateKey);
 
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
-pub struct Signature;
+impl PrivateKey {
+    pub fn sign<T: Serialize>(&self, data: T) -> Signed<T> {
+        let signing_key = SigningKey::<Sha256>::new(self.0.clone());
+        let data_encoded = serde_json::to_vec(&data).unwrap();
+        Signed{signature: signing_key.sign(&data_encoded).to_vec(), data}
+    }
+}
 
-pub fn generate_keypair() -> (RsaPrivateKey, RsaPublicKey) {
-    // TODO: Actually generate these randomly
+pub fn generate_keypair() -> (PrivateKey, PublicKey) {
     let mut rng = rand::thread_rng();
-    let bits = 2048;
 
-    let private_key = RsaPrivateKey::new(&mut rng, bits).expect("failed to generate a key");
+    let private_key = RsaPrivateKey::new(&mut rng, KEY_SIZE).expect("failed to generate a key");
     let public_key = RsaPublicKey::from(&private_key);
 
-    (private_key, public_key)
+    (PrivateKey(private_key), PublicKey(public_key))
 }
 
 
 /// A container of signed data
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Signed<T> {
-    /// The hash of this transaction.
-    pub hash: Hash,
     /// A signature proving that the sender wallet created this transaction.
-    pub signature: Signature,
+    pub signature: Vec<u8>,
     /// The data being signed,
     pub data: T,
 }
@@ -43,7 +60,6 @@ impl<T: Serialize> Signed<T> {
     pub fn new(data: T, _key: &PrivateKey) -> Self {
         // TODO: actually sign this
         Self {
-            hash: Hash,
             signature: Signature,
             data,
         }
