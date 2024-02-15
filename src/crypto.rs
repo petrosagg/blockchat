@@ -74,8 +74,18 @@ mod test {
     fn generate_keypair_test() {
         let (private_key, public_key) = generate_keypair();
 
-        assert!((private_key.validate()).is_ok());
-        assert!(private_key.to_public_key() == public_key);
+        assert!(private_key.0.validate().is_ok());
+        assert!(private_key.0.to_public_key() == public_key.0);
     }
 
+    #[test]
+    fn sign_verify_test() {
+        let (private_key, public_key) = generate_keypair();
+        let (_, other_public_key) = generate_keypair();
+        let data = b"Hello World!";
+        let signature = private_key.sign(data);
+
+        assert!(public_key.verify(signature.clone()).is_ok());
+        assert!(other_public_key.verify(signature).is_err());
+    }
 }
