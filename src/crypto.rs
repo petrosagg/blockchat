@@ -4,14 +4,14 @@ use serde::{Deserialize, Serialize};
 use rsa::{RsaPrivateKey, RsaPublicKey};
 
 
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Hash;
 
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
-pub struct PublicKey;
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
+pub struct PublicKey(RsaPublicKey);
 
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
-pub struct PrivateKey;
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
+pub struct PrivateKey(RsaPrivateKey);
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub struct Signature;
@@ -29,7 +29,7 @@ pub fn generate_keypair() -> (RsaPrivateKey, RsaPublicKey) {
 
 
 /// A container of signed data
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Signed<T> {
     /// The hash of this transaction.
     pub hash: Hash,

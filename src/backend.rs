@@ -86,7 +86,7 @@ pub enum Message {
     Block(Signed<Block>),
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Block {
     /// The creation timestamp of this block
     // TODO: change this to a type from `chrono`

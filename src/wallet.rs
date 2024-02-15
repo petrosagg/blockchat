@@ -11,7 +11,7 @@ pub struct Wallet {
     nonce: u64,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Transaction {
     /// The public key of the sending wallet.
     sender_address: PublicKey,
@@ -63,7 +63,7 @@ impl Wallet {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum TransactionKind {
     /// A coin transaction transferring the specified amount.
     Coin(u64),

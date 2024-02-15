@@ -12,7 +12,7 @@ clap = { version = "4.4.18", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0"
 tracing = "0.1"
-rsa = "0.9.6"
+rsa = { version = "0.9.6", features = ["serde", "sha2"] }
 rand = "0.8.5"
 
 [profile.dev.package.num-bigint-dig]
