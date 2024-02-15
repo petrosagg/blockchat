@@ -56,16 +56,6 @@ pub struct Signed<T> {
     pub data: T,
 }
 
-impl<T: Serialize> Signed<T> {
-    pub fn new(data: T, _key: &PrivateKey) -> Self {
-        // TODO: actually sign this
-        Self {
-            signature: Signature,
-            data,
-        }
-    }
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
