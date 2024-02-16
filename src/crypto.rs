@@ -1,12 +1,11 @@
 //! The definition of all cryptographic primitives used in BlockChat.
 
-use rsa::sha2::Sha256;
-use serde::{Deserialize, Serialize};
-use rsa::{RsaPrivateKey, RsaPublicKey};
 use rsa::pkcs1v15::{Signature, SigningKey, VerifyingKey};
-use rsa::signature::{Signer, Verifier};
+use rsa::sha2::Sha256;
 use rsa::signature::SignatureEncoding;
-
+use rsa::signature::{Signer, Verifier};
+use rsa::{RsaPrivateKey, RsaPublicKey};
+use serde::{Deserialize, Serialize};
 
 pub const KEY_SIZE: usize = 2048;
 
@@ -33,7 +32,10 @@ impl PrivateKey {
     pub fn sign<T: Serialize>(&self, data: T) -> Signed<T> {
         let signing_key = SigningKey::<Sha256>::new(self.0.clone());
         let data_encoded = serde_json::to_vec(&data).unwrap();
-        Signed{signature: signing_key.sign(&data_encoded).to_vec(), data}
+        Signed {
+            signature: signing_key.sign(&data_encoded).to_vec(),
+            data,
+        }
     }
 }
 
@@ -45,7 +47,6 @@ pub fn generate_keypair() -> (PrivateKey, PublicKey) {
 
     (PrivateKey(private_key), PublicKey(public_key))
 }
-
 
 /// A container of signed data
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
