@@ -157,7 +157,7 @@ mod test {
 
         // Now create a transaction from a wallet that is not tracked and send it to the node
         let mut user_wallet = Wallet::new();
-        let transaction = user_wallet.sign_coin_transaction(&node.wallet.public_key, 42);
+        let transaction = user_wallet.create_coin_transaction(node.wallet.public_key.clone(), 42);
         network2.send(&Message::Transaction(transaction));
         node.step();
         assert_eq!(node.pending_transactions.len(), 1);

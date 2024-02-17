@@ -83,3 +83,40 @@ pub enum TransactionKind {
     // A staking transaction locking up the specified amount.
     Stake(u64),
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn create_transactions_test() {
+        let mut wallet = Wallet::new();
+
+        let sender = wallet.public_key.clone();
+        let (_, receiver) = crate::crypto::generate_keypair();
+        let coin_amount = 40;
+        let stake_amount = 100;
+        let message = String::from("Hello World!");
+
+        let mut tx = wallet.create_coin_transaction(receiver.clone(), coin_amount);
+
+        assert!(sender.verify(tx.clone()).is_ok());
+        assert!(tx.data.sender_address == wallet.public_key);
+        assert!(tx.data.kind == TransactionKind::Coin(coin_amount, receiver.clone()));
+        assert!(tx.data.nonce == 0);
+
+        tx = wallet.create_message_transaction(receiver.clone(), message.clone());
+
+        assert!(sender.verify(tx.clone()).is_ok());
+        assert!(tx.data.sender_address == wallet.public_key);
+        assert!(tx.data.kind == TransactionKind::Message(message, receiver));
+        assert!(tx.data.nonce == 1);
+
+        tx = wallet.create_stake_transaction(stake_amount.clone());
+
+        assert!(sender.verify(tx.clone()).is_ok());
+        assert!(tx.data.sender_address == wallet.public_key);
+        assert!(tx.data.kind == TransactionKind::Stake(stake_amount));
+        assert!(tx.data.nonce == 2);
+    }
+}
