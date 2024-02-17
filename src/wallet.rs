@@ -31,16 +31,14 @@ impl Wallet {
         }
     }
 
-    fn create_transaction(&mut self,
-        kind: TransactionKind
-    ) -> Transaction {
+    fn create_transaction(&mut self, kind: TransactionKind) -> Transaction {
         let nonce = self.nonce;
         self.nonce += 1;
 
         Transaction {
             sender_address: self.public_key.clone(),
             kind,
-            nonce
+            nonce,
         }
     }
 
@@ -64,10 +62,7 @@ impl Wallet {
         self.private_key.sign(tx)
     }
 
-    pub fn create_stake_transaction(
-        &mut self,
-        amount: u64,
-    ) -> Signed<Transaction> {
+    pub fn create_stake_transaction(&mut self, amount: u64) -> Signed<Transaction> {
         let tx = self.create_transaction(TransactionKind::Stake(amount));
 
         self.private_key.sign(tx)
@@ -101,22 +96,25 @@ mod test {
         let mut tx = wallet.create_coin_transaction(receiver.clone(), coin_amount);
 
         assert!(sender.verify(tx.clone()).is_ok());
-        assert!(tx.data.sender_address == wallet.public_key);
-        assert!(tx.data.kind == TransactionKind::Coin(coin_amount, receiver.clone()));
-        assert!(tx.data.nonce == 0);
+        assert_eq!(tx.data.sender_address, sender);
+        assert_eq!(
+            tx.data.kind,
+            TransactionKind::Coin(coin_amount, receiver.clone())
+        );
+        assert_eq!(tx.data.nonce, 0);
 
         tx = wallet.create_message_transaction(receiver.clone(), message.clone());
 
         assert!(sender.verify(tx.clone()).is_ok());
-        assert!(tx.data.sender_address == wallet.public_key);
-        assert!(tx.data.kind == TransactionKind::Message(message, receiver));
-        assert!(tx.data.nonce == 1);
+        assert_eq!(tx.data.sender_address, wallet.public_key);
+        assert_eq!(tx.data.kind, TransactionKind::Message(message, receiver));
+        assert_eq!(tx.data.nonce, 1);
 
         tx = wallet.create_stake_transaction(stake_amount.clone());
 
         assert!(sender.verify(tx.clone()).is_ok());
-        assert!(tx.data.sender_address == wallet.public_key);
-        assert!(tx.data.kind == TransactionKind::Stake(stake_amount));
-        assert!(tx.data.nonce == 2);
+        assert_eq!(tx.data.sender_address, wallet.public_key);
+        assert_eq!(tx.data.kind, TransactionKind::Stake(stake_amount));
+        assert_eq!(tx.data.nonce, 2);
     }
 }

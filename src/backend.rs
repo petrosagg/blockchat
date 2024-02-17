@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 use std::time::SystemTime;
 
 use rand::rngs::StdRng;
-use rand::{SeedableRng, Rng};
+use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 
 use crate::crypto::{Hash, PublicKey, Signed};
@@ -53,11 +53,7 @@ impl Node {
         // TODO: use the hash of the last block
         let mut rng = StdRng::seed_from_u64(self.blockchain.len() as u64);
         // Construct the ballot from the current set of
-        let total_stake: u64 = self
-            .stake_pool
-            .iter()
-            .map(|(_pk, stake)| *stake)
-            .sum();
+        let total_stake: u64 = self.stake_pool.iter().map(|(_pk, stake)| *stake).sum();
         assert!(total_stake > 0, "no stakers, BlockChat is doomed");
 
         let mut winner = rng.gen_range(0..total_stake);
