@@ -25,13 +25,12 @@ pub struct Transaction {
 
 impl Wallet {
     pub fn new() -> Self {
-        // let (public_key, private_key) = crypto::generate_keypair();
-        // Self {
-        //     public_key,
-        //     private_key,
-        //     nonce: 0,
-        // }
-        todo!();
+        let (private_key, public_key) = crypto::generate_keypair();
+        Self {
+            public_key,
+            private_key,
+            nonce: 0,
+        }
     }
 
     pub fn sign_coin_transaction(

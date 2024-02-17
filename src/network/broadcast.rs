@@ -17,8 +17,15 @@ pub struct Broadcaster<T> {
 }
 
 impl<T: Serialize + DeserializeOwned + Clone + Send + 'static> Broadcaster<T> {
-    pub fn new(peers: &[SocketAddr], my_index: usize) -> Self {
-        let sockets = create_sockets(peers, my_index);
+    pub fn new(listener: TcpListener, peers: &[SocketAddr], my_index: usize) -> Self {
+        let sockets = std::thread::scope(|s| {
+            let start_task = s.spawn(|| start_connections(&peers[..my_index]));
+            let await_task = s.spawn(|| await_connections(&listener, peers.len() - my_index - 1));
+
+            let mut sockets = start_task.join().unwrap();
+            sockets.extend(await_task.join().unwrap());
+            sockets
+        });
 
         let (read_tx, read_rx) = mpsc::channel();
         let mut write_txs = vec![];
@@ -83,18 +90,6 @@ impl<T: Serialize + DeserializeOwned + Clone + Send + 'static> Network<T> for Br
     }
 }
 
-/// Creates a TCP stream for all peers.
-fn create_sockets(peers: &[SocketAddr], my_index: usize) -> Vec<TcpStream> {
-    std::thread::scope(|s| {
-        let start_task = s.spawn(|| start_connections(&peers[..my_index]));
-        let await_task = s.spawn(|| await_connections(peers[my_index], peers.len() - my_index - 1));
-
-        let mut streams = start_task.join().unwrap();
-        streams.extend(await_task.join().unwrap());
-        streams
-    })
-}
-
 /// Connects to the provided list of peers. Returns the established TCP streams.
 fn start_connections(peers: &[SocketAddr]) -> Vec<TcpStream> {
     let mut streams = vec![];
@@ -123,9 +118,8 @@ fn start_connections(peers: &[SocketAddr]) -> Vec<TcpStream> {
 }
 
 /// Waits for the expected number of peers to connect. Returns the established TCP streams.
-fn await_connections(listen_addr: SocketAddr, expected_peers: usize) -> Vec<TcpStream> {
+fn await_connections(listener: &TcpListener, expected_peers: usize) -> Vec<TcpStream> {
     let mut streams = vec![];
-    let listener = TcpListener::bind(listen_addr).unwrap();
 
     for _ in 0..expected_peers {
         let stream = listener.accept().unwrap().0;
@@ -148,16 +142,19 @@ mod test {
         ];
         std::thread::scope(|s| {
             s.spawn(|| {
-                let mut peer = Broadcaster::<usize>::new(&addrs, 0);
+                let listener = TcpListener::bind(addrs[0]).unwrap();
+                let mut peer = Broadcaster::<usize>::new(listener, &addrs, 0);
                 peer.await_events();
                 assert_eq!(peer.recv(), Some(42));
             });
             s.spawn(|| {
-                let mut peer = Broadcaster::<usize>::new(&addrs, 1);
+                let listener = TcpListener::bind(addrs[1]).unwrap();
+                let mut peer = Broadcaster::<usize>::new(listener, &addrs, 1);
                 peer.send(&42);
             });
             s.spawn(|| {
-                let mut peer = Broadcaster::<usize>::new(&addrs, 2);
+                let listener = TcpListener::bind(addrs[2]).unwrap();
+                let mut peer = Broadcaster::<usize>::new(listener, &addrs, 2);
                 peer.await_events();
                 assert_eq!(peer.recv(), Some(42));
             });

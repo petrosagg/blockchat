@@ -9,11 +9,10 @@ use crate::network::TypedJsonStream;
 
 /// Connects to the specified bootstrap server and returns a list of addreses for all the nodes in
 /// the network.
-pub fn discover_peers<D: Serialize + DeserializeOwned>(
-    bootstrap_addr: SocketAddr,
-    my_addr: SocketAddr,
-    data: D,
-) -> (usize, Vec<SocketAddr>, Vec<D>) {
+pub fn discover_peers<D>(bootstrap_addr: SocketAddr, data: D) -> (usize, Vec<D>)
+where
+    D: Serialize + DeserializeOwned,
+{
     let socket = loop {
         match TcpStream::connect(bootstrap_addr) {
             Ok(stream) => break stream,
@@ -23,38 +22,29 @@ pub fn discover_peers<D: Serialize + DeserializeOwned>(
     };
     let mut stream = TypedJsonStream::new(socket);
 
-    stream.send(&my_addr);
-    stream.send(&serde_json::to_string(&data).unwrap());
-    let my_index: usize = stream.recv();
-    let peer_addrs: Vec<SocketAddr> = stream.recv();
-    let peer_data: Vec<String> = stream.recv();
-    let peer_data = peer_data
-        .into_iter()
-        .map(|data| serde_json::from_str(&data).unwrap())
-        .collect();
-    (my_index, peer_addrs, peer_data)
+    stream.send(&data);
+    (stream.recv(), stream.recv())
 }
 
-pub fn bootstrap_helper(bootstrap_addr: SocketAddr, expected_peers: usize) {
+pub fn bootstrap_helper<D>(bootstrap_addr: SocketAddr, expected_peers: usize)
+where
+    D: Serialize + DeserializeOwned,
+{
     let listener = TcpListener::bind(bootstrap_addr).unwrap();
 
     let mut streams = vec![];
-    let mut peer_addrs = vec![];
     let mut peer_data = vec![];
     for _ in 0..expected_peers {
         let socket = listener.accept().unwrap().0;
         let mut stream = TypedJsonStream::new(socket);
-        let addr = stream.recv::<SocketAddr>();
-        let data = stream.recv::<String>();
+        let data = stream.recv::<D>();
         let index = streams.len();
         streams.push((index, stream));
-        peer_addrs.push(addr);
         peer_data.push(data);
     }
 
     for (peer_index, mut peer_stream) in streams {
         peer_stream.send(&peer_index);
-        peer_stream.send(&peer_addrs);
         peer_stream.send(&peer_data);
     }
 }
@@ -66,33 +56,27 @@ mod test {
     #[test]
     fn basic_discovery() {
         let bootstrap_addr = "127.0.0.1:7001".parse().unwrap();
-        let addr1 = "127.0.0.1:6000".parse().unwrap();
-        let addr2 = "127.0.0.1:6001".parse().unwrap();
-        let addr3 = "127.0.0.1:6002".parse().unwrap();
         std::thread::scope(|s| {
             // First spawn the bootstrap helper
-            s.spawn(|| bootstrap_helper(bootstrap_addr, 3));
+            s.spawn(|| bootstrap_helper::<(SocketAddr, u64)>(bootstrap_addr, 3));
 
             // Then each peer performs discovery
             s.spawn(|| {
-                let (my_index, addrs, data) = discover_peers(bootstrap_addr, addr1, 1);
-                assert_eq!(addrs[my_index], addr1);
-                assert_eq!(addrs.len(), 3);
-                assert_eq!(data[my_index], 1);
+                let addr: SocketAddr = "127.0.0.1:6000".parse().unwrap();
+                let (my_index, data) = discover_peers(bootstrap_addr, (addr, 1));
+                assert_eq!(data[my_index], (addr, 1));
                 assert_eq!(data.len(), 3);
             });
             s.spawn(|| {
-                let (my_index, addrs, data) = discover_peers(bootstrap_addr, addr2, 2);
-                assert_eq!(addrs[my_index], addr2);
-                assert_eq!(addrs.len(), 3);
-                assert_eq!(data[my_index], 2);
+                let addr: SocketAddr = "127.0.0.1:6001".parse().unwrap();
+                let (my_index, data) = discover_peers(bootstrap_addr, (addr, 2));
+                assert_eq!(data[my_index], (addr, 2));
                 assert_eq!(data.len(), 3);
             });
             s.spawn(|| {
-                let (my_index, addrs, data) = discover_peers(bootstrap_addr, addr3, 3);
-                assert_eq!(addrs[my_index], addr3);
-                assert_eq!(addrs.len(), 3);
-                assert_eq!(data[my_index], 3);
+                let addr: SocketAddr = "127.0.0.1:6002".parse().unwrap();
+                let (my_index, data) = discover_peers(bootstrap_addr, (addr, 3));
+                assert_eq!(data[my_index], (addr, 3));
                 assert_eq!(data.len(), 3);
             });
         })
