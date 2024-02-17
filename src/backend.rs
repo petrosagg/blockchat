@@ -4,6 +4,8 @@
 use std::collections::{HashMap, HashSet};
 use std::time::SystemTime;
 
+use rand::rngs::StdRng;
+use rand::{SeedableRng, Rng};
 use serde::{Deserialize, Serialize};
 
 use crate::crypto::{Hash, PublicKey, Signed};
@@ -22,7 +24,7 @@ pub struct Node {
     /// The balances per public key.
     balances: HashMap<PublicKey, WalletState>,
     /// The stake amounts per public key.
-    stake_pool: HashMap<PublicKey, u64>,
+    stake_pool: Vec<(PublicKey, u64)>,
     /// This node's handle to the network
     network: Box<dyn Network<Message>>,
 }
@@ -42,9 +44,34 @@ impl Node {
             // Calculate the balances based on the provided blockchain
             balances: HashMap::new(),
             // Calculate the stake pool based on the provided blockchain
-            stake_pool: HashMap::new(),
+            stake_pool: Vec::new(),
             network: Box::new(network),
         }
+    }
+
+    fn next_validator(&self) -> PublicKey {
+        // TODO: use the hash of the last block
+        let mut rng = StdRng::seed_from_u64(self.blockchain.len() as u64);
+        // Construct the ballot from the current set of
+        let total_stake: u64 = self
+            .stake_pool
+            .iter()
+            .map(|(_pk, stake)| *stake)
+            .sum();
+        assert!(total_stake > 0, "no stakers, BlockChat is doomed");
+
+        let mut winner = rng.gen_range(0..total_stake);
+        self.stake_pool
+            .iter()
+            .find_map(|(pk, stake)| {
+                if *stake > winner {
+                    Some(pk.clone())
+                } else {
+                    winner -= stake;
+                    None
+                }
+            })
+            .unwrap()
     }
 
     /// Adds a transaction in the set of pending transactions
