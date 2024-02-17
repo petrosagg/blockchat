@@ -163,7 +163,7 @@ mod test {
         assert_eq!(node.pending_transactions.len(), 1);
 
         // Now create an invalid transaction and check that it's ignored
-        let transaction = user_wallet.sign_coin_transaction(&node.wallet.public_key, 42);
+        let transaction = user_wallet.create_coin_transaction(node.wallet.public_key.clone(), 42);
         let invalid = Signed::new_invalid(transaction.data);
         network2.send(&Message::Transaction(invalid));
         node.step();
