@@ -63,11 +63,3 @@ fn bootstrap(config: BootstrapConfig) -> Node {
         network,
     )
 }
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn test_boostrap() {}
-}

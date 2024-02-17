@@ -2,6 +2,7 @@ use std::{
     io::{BufRead, BufReader, Write},
     net::TcpStream,
     sync::mpsc::{self, Receiver, Sender},
+    time::Duration,
 };
 
 use serde::{de::DeserializeOwned, Serialize};
@@ -40,7 +41,7 @@ impl TypedJsonStream {
 }
 
 pub trait Network<T> {
-    fn await_events(&mut self);
+    fn await_events(&mut self, timeout: Option<Duration>);
 
     fn recv(&mut self) -> Option<T>;
 
@@ -73,9 +74,12 @@ impl<T> TestNetwork<T> {
 }
 
 impl<T: Send + Clone> Network<T> for TestNetwork<T> {
-    fn await_events(&mut self) {
+    fn await_events(&mut self, timeout: Option<Duration>) {
         if self.buffer.is_none() {
-            self.buffer = self.rx.recv().ok();
+            self.buffer = match timeout {
+                Some(timeout) => self.rx.recv_timeout(timeout).ok(),
+                None => self.rx.recv().ok(),
+            };
         }
     }
 

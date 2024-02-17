@@ -70,9 +70,12 @@ impl<T: Serialize + DeserializeOwned + Clone + Send + 'static> Broadcaster<T> {
 }
 
 impl<T: Serialize + DeserializeOwned + Clone + Send + 'static> Network<T> for Broadcaster<T> {
-    fn await_events(&mut self) {
+    fn await_events(&mut self, timeout: Option<Duration>) {
         if self.buffer.is_none() {
-            self.buffer = self.read_rx.recv().ok();
+            self.buffer = match timeout {
+                Some(timeout) => self.read_rx.recv_timeout(timeout).ok(),
+                None => self.read_rx.recv().ok(),
+            };
         }
     }
 
@@ -144,7 +147,7 @@ mod test {
             s.spawn(|| {
                 let listener = TcpListener::bind(addrs[0]).unwrap();
                 let mut peer = Broadcaster::<usize>::new(listener, &addrs, 0);
-                peer.await_events();
+                peer.await_events(None);
                 assert_eq!(peer.recv(), Some(42));
             });
             s.spawn(|| {
@@ -155,7 +158,7 @@ mod test {
             s.spawn(|| {
                 let listener = TcpListener::bind(addrs[2]).unwrap();
                 let mut peer = Broadcaster::<usize>::new(listener, &addrs, 2);
-                peer.await_events();
+                peer.await_events(None);
                 assert_eq!(peer.recv(), Some(42));
             });
         })

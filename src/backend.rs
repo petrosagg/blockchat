@@ -70,7 +70,7 @@ impl Node {
 
     fn step(&mut self) {
         // First handle all pending messages from the network
-        self.network.await_events();
+        self.network.await_events(None);
         while let Some(msg) = self.network.recv() {
             match msg {
                 Message::Transaction(tx) => self.handle_transaction(tx),
