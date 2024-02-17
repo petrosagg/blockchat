@@ -20,7 +20,7 @@ pub struct Node {
     /// The wallet of this node.
     wallet: Wallet,
     /// The balances per public key.
-    balances: HashMap<PublicKey, u64>,
+    balances: HashMap<PublicKey, WalletState>,
     /// The stake amounts per public key.
     stake_pool: HashMap<PublicKey, u64>,
     /// This node's handle to the network
@@ -100,6 +100,14 @@ pub struct Block {
     validator: PublicKey,
     /// The hash of the parent block.
     parent_hash: Hash,
+}
+
+#[derive(Clone, Default)]
+pub struct WalletState {
+    // The current BCC balance of this wallet.
+    balance: u64,
+    // The highest nonce seen from this wallet.
+    nonce: u64,
 }
 
 #[derive(Clone, Default)]
