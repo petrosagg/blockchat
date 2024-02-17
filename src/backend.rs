@@ -28,7 +28,7 @@ pub struct Node {
 }
 
 impl Node {
-    fn new(
+    pub fn new(
         wallet: Wallet,
         blockchain: Vec<Signed<Block>>,
         capacity: usize,

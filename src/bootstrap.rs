@@ -7,7 +7,7 @@ use std::net::{IpAddr, SocketAddr, TcpListener};
 
 use serde::{Deserialize, Serialize};
 
-use crate::backend::Message;
+use crate::backend::{Message, Node};
 use crate::crypto::PublicKey;
 use crate::network::broadcast::Broadcaster;
 use crate::network::discovery::{bootstrap_helper, discover_peers};
@@ -37,7 +37,7 @@ struct PeerInfo {
     public_key: PublicKey,
 }
 
-fn bootstrap(config: BootstrapConfig) {
+fn bootstrap(config: BootstrapConfig) -> Node {
     if config.bootstrap_leader {
         std::thread::spawn(move || {
             bootstrap_helper::<PeerInfo>(config.bootstrap_addr, config.peers)
@@ -48,15 +48,20 @@ fn bootstrap(config: BootstrapConfig) {
 
     let peer_info = PeerInfo {
         listen_addr: listener.local_addr().unwrap(),
-        public_key: config.wallet.public_key,
+        public_key: config.wallet.public_key.clone(),
     };
     let (my_index, peer_infos) = discover_peers(config.bootstrap_addr, peer_info);
 
     let peer_addrs: Vec<_> = peer_infos.iter().map(|info| info.listen_addr).collect();
-    let _broadcaster = Broadcaster::<Message>::new(listener, &peer_addrs, my_index);
+    let network = Broadcaster::<Message>::new(listener, &peer_addrs, my_index);
 
-    // Instantiate node with the broadcaster network and given wallet.
-    todo!();
+    Node::new(
+        config.wallet,
+        // TODO: generate genesis block
+        vec![],
+        config.capacity,
+        network,
+    )
 }
 
 #[cfg(test)]
