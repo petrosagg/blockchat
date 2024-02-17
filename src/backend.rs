@@ -49,9 +49,12 @@ impl Node {
 
     /// Adds a transaction in the set of pending transactions
     fn handle_transaction(&mut self, tx: Signed<Transaction>) {
-        // 1. Validate signature
-        // 2. Validate that there is enough balance
+        let signer = tx.data.sender_address.clone();
+        let Ok(tx) = signer.verify(tx) else {
+            return;
+        };
         self.pending_transactions.insert(tx);
+        // 2. Validate that there is enough balance
     }
 
     /// Attempts to append the given block to the tip of the maintained blockchain. Returns an
@@ -121,7 +124,13 @@ mod test {
         let mut user_wallet = Wallet::new();
         let transaction = user_wallet.sign_coin_transaction(&node.wallet.public_key, 42);
         network2.send(&Message::Transaction(transaction));
+        node.step();
+        assert_eq!(node.pending_transactions.len(), 1);
 
+        // Now create an invalid transaction and check that it's ignored
+        let transaction = user_wallet.sign_coin_transaction(&node.wallet.public_key, 42);
+        let invalid = Signed::new_invalid(transaction.data);
+        network2.send(&Message::Transaction(invalid));
         node.step();
         assert_eq!(node.pending_transactions.len(), 1);
     }

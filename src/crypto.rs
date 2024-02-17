@@ -16,12 +16,16 @@ pub struct Hash;
 pub struct PublicKey(RsaPublicKey);
 
 impl PublicKey {
-    pub fn verify<T: Serialize>(&self, signature: Signed<T>) -> Result<(), rsa::signature::Error> {
+    pub fn verify<T: Serialize>(
+        &self,
+        signature: Signed<T>,
+    ) -> Result<Signed<T>, rsa::signature::Error> {
         let verifying_key = VerifyingKey::<Sha256>::new(self.0.clone());
         let data_encoded = serde_json::to_vec(&(signature.data)).unwrap();
         let helper: &[u8] = &signature.signature;
         let signature_decoded = Signature::try_from(helper).unwrap();
-        verifying_key.verify(&data_encoded, &signature_decoded)
+        verifying_key.verify(&data_encoded, &signature_decoded)?;
+        Ok(signature)
     }
 }
 

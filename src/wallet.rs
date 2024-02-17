@@ -14,13 +14,13 @@ pub struct Wallet {
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Transaction {
     /// The public key of the sending wallet.
-    sender_address: PublicKey,
+    pub sender_address: PublicKey,
     /// The public key of the receiving wallet.
-    receiver_address: PublicKey,
+    pub receiver_address: PublicKey,
     /// The kind of this transaction.
-    kind: TransactionKind,
+    pub kind: TransactionKind,
     /// The sender nonce.
-    nonce: u64,
+    pub nonce: u64,
 }
 
 impl Wallet {
