@@ -1,0 +1,12 @@
+* Only accept transactions whose nonce is exactly the one we expect
+* Elect the next block leader using the hash of the top block
+* Test `handle_block` with various kind of invalid blocks
+  * Too many transactions
+  * Invalid signatures
+  * Invalid validator
+  * Invalid parent hash
+* Test `handle_bock` with valid blocks and verify wallet state updates correctly
+* Test `mint_block`
+* Store potentially valid blocks for future processing instead of dropping them
+* Add tests for insufficient funds and combinations of staking and coin
+  transactions to make sure the available balance accounting is correct

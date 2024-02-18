@@ -328,7 +328,4 @@ mod test {
         assert!(matches!(result, Err(Error::InsufficientFunds)));
         assert_eq!(sender_wallet.nonce, 0);
     }
-
-    // TODO: Add tests for insufficient funds and combinations of staking and coin transactions to
-    // make sure the availalbe balance accounting is correct
 }
