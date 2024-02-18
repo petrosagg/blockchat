@@ -148,20 +148,20 @@ mod test {
     fn basic_test() {
         let (network1, mut network2) = TestNetwork::new();
 
-        let node_wallet = Wallet::new();
+        let (node_wallet, _node_key) = Wallet::generate();
         let mut node = Node::new(node_wallet, vec![], 5, network1);
 
         // Now create a transaction from a wallet that is not tracked and send it to the node
-        let mut user_wallet = Wallet::new();
-        let transaction = user_wallet.create_coin_transaction(node.wallet.public_key.clone(), 42);
-        network2.send(&Message::Transaction(transaction));
+        let (mut user_wallet, user_key) = Wallet::generate();
+        let tx = user_wallet.create_coin_tx(node.wallet.public_key.clone(), 42);
+        network2.send(&Message::Transaction(user_key.sign(tx)));
         node.step();
         assert_eq!(node.pending_transactions.len(), 1);
 
         // Now create an invalid transaction and check that it's ignored
-        let transaction = user_wallet.create_coin_transaction(node.wallet.public_key.clone(), 42);
-        let invalid = Signed::new_invalid(transaction.data);
-        network2.send(&Message::Transaction(invalid));
+        let tx = user_wallet.create_coin_tx(node.wallet.public_key.clone(), 42);
+        let invalid_tx = Signed::new_invalid(tx);
+        network2.send(&Message::Transaction(invalid_tx));
         node.step();
         assert_eq!(node.pending_transactions.len(), 1);
     }

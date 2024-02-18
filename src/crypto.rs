@@ -1,11 +1,16 @@
 //! The definition of all cryptographic primitives used in BlockChat.
 
+use std::cmp::Ordering;
+
 use rsa::pkcs1v15::{Signature, SigningKey, VerifyingKey};
 use rsa::sha2::Sha256;
 use rsa::signature::SignatureEncoding;
 use rsa::signature::{Signer, Verifier};
+use rsa::traits::PublicKeyParts;
 use rsa::{RsaPrivateKey, RsaPublicKey};
 use serde::{Deserialize, Serialize};
+
+use crate::error::Result;
 
 pub const KEY_SIZE: usize = 2048;
 
@@ -15,11 +20,22 @@ pub struct Hash;
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct PublicKey(RsaPublicKey);
 
+impl PartialOrd for PublicKey {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for PublicKey {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.0
+            .n()
+            .cmp(other.0.n())
+            .then_with(|| self.0.e().cmp(other.0.e()))
+    }
+}
+
 impl PublicKey {
-    pub fn verify<T: Serialize>(
-        &self,
-        signature: Signed<T>,
-    ) -> Result<Signed<T>, rsa::signature::Error> {
+    pub fn verify<T: Serialize>(&self, signature: Signed<T>) -> Result<Signed<T>> {
         let verifying_key = VerifyingKey::<Sha256>::new(self.0.clone());
         let data_encoded = serde_json::to_vec(&(signature.data)).unwrap();
         let helper: &[u8] = &signature.signature;
