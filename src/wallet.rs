@@ -160,23 +160,27 @@ mod test {
     use super::*;
 
     /// Creates a test wallet with 1M BCC as initial funds
-    fn setup_test_wallet() -> (Wallet, PrivateKey) {
+    fn setup_test_wallet(initial_balance: u64) -> (Wallet, PrivateKey) {
         let (mut wallet, wallet_key) = Wallet::generate();
         // Create Alice's keypair and give some initial funds to the test wallet
         let (funder_key, funder_public_key) = crate::crypto::generate_keypair();
         let initial_funds = Transaction {
             sender_address: funder_public_key,
-            kind: TransactionKind::Coin(1_000_000, wallet.public_key.clone()),
+            kind: TransactionKind::Coin(initial_balance, wallet.public_key.clone()),
             nonce: 0,
         };
         wallet.apply_tx(funder_key.sign(initial_funds)).unwrap();
         (wallet, wallet_key)
     }
 
+    fn setup_default_test_wallet() -> (Wallet, PrivateKey) {
+        setup_test_wallet(1_000_000)
+    }
+
     #[test]
     fn test_coin_transaction() {
-        let (mut sender_wallet, sender_key) = setup_test_wallet();
-        let (mut receiver_wallet, _receiver_key) = setup_test_wallet();
+        let (mut sender_wallet, sender_key) = setup_default_test_wallet();
+        let (mut receiver_wallet, _receiver_key) = setup_default_test_wallet();
 
         let coin_amount = 100;
         let tx = sender_wallet.create_coin_tx(receiver_wallet.public_key.clone(), coin_amount);
@@ -206,8 +210,8 @@ mod test {
 
     #[test]
     fn test_message_transaction() {
-        let (mut sender_wallet, sender_key) = setup_test_wallet();
-        let (mut receiver_wallet, _receiver_key) = setup_test_wallet();
+        let (mut sender_wallet, sender_key) = setup_default_test_wallet();
+        let (mut receiver_wallet, _receiver_key) = setup_default_test_wallet();
 
         let message = String::from("Hello World!");
         let expected_fees = message.len() as u64;
@@ -239,7 +243,7 @@ mod test {
 
     #[test]
     fn test_stake_transaction() {
-        let (mut sender_wallet, sender_key) = setup_test_wallet();
+        let (mut sender_wallet, sender_key) = setup_default_test_wallet();
 
         let stake_amount = 100;
         let tx = sender_wallet.create_stake_tx(stake_amount);
@@ -261,6 +265,49 @@ mod test {
         assert_eq!(sender_wallet.available_funds(), 1_000_000 - stake_amount);
         assert_eq!(sender_wallet.stake, stake_amount);
         assert_eq!(sender_wallet.nonce, 1);
+    }
+
+    #[test]
+    fn test_coin_insufficient_funds() {
+        let (mut sender_wallet, sender_key) = setup_default_test_wallet();
+        let (receiver_wallet, _receiver_key) = setup_default_test_wallet();
+
+        // Beware of ceil.
+        let coin_amount = 970_875;
+        let tx = sender_wallet.create_coin_tx(receiver_wallet.public_key.clone(), coin_amount);
+        let signed_tx = sender_key.sign(tx.clone());
+
+        let result = sender_wallet.apply_tx(signed_tx.clone());
+        assert!(matches!(result, Err(Error::InsufficientFunds)));
+        assert_eq!(sender_wallet.nonce, 0);
+    }
+
+    #[test]
+    fn test_message_insufficient_funds() {
+        let (mut sender_wallet, sender_key) = setup_test_wallet(23);
+        let (receiver_wallet, _receiver_key) = setup_default_test_wallet();
+
+        let message = String::from("These are 24 characters.");
+        let tx = sender_wallet.create_message_tx(receiver_wallet.public_key.clone(), message);
+        let signed_tx = sender_key.sign(tx.clone());
+        println!("{:?}", tx.fees());
+
+        let result = sender_wallet.apply_tx(signed_tx.clone());
+        assert!(matches!(result, Err(Error::InsufficientFunds)));
+        assert_eq!(sender_wallet.nonce, 0);
+    }
+
+    #[test]
+    fn test_stake_insufficient_funds() {
+        let (mut sender_wallet, sender_key) = setup_default_test_wallet();
+
+        let stake_amount = 1_000_001;
+        let tx = sender_wallet.create_stake_tx(stake_amount);
+        let signed_tx = sender_key.sign(tx.clone());
+
+        let result = sender_wallet.apply_tx(signed_tx.clone());
+        assert!(matches!(result, Err(Error::InsufficientFunds)));
+        assert_eq!(sender_wallet.nonce, 0);
     }
 
     // TODO: Add tests for insufficient funds and combinations of staking and coin transactions to
