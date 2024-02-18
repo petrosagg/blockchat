@@ -7,10 +7,10 @@ use std::net::{IpAddr, SocketAddr, TcpListener};
 
 use serde::{Deserialize, Serialize};
 
-use crate::backend::{Message, Node};
 use crate::crypto::{PrivateKey, PublicKey};
 use crate::network::broadcast::Broadcaster;
 use crate::network::discovery::{bootstrap_helper, discover_peers};
+use crate::node::{Message, Node};
 pub struct BootstrapConfig {
     /// Whether this node is responsible for running the bootstrap helper
     bootstrap_leader: bool,
