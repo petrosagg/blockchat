@@ -181,8 +181,7 @@ impl Node {
             timestamp: SystemTime::now(),
             transactions,
             validator: self.public_key.clone(),
-            parent_hash: Hash,
-            // TODO: Fix the parent hash.
+            parent_hash: self.blockchain.last().unwrap().hash.clone(),
         };
 
         self.private_key.sign(new_block)
