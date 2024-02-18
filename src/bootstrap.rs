@@ -39,8 +39,9 @@ struct PeerInfo {
 
 fn bootstrap(config: BootstrapConfig) -> Node {
     if config.bootstrap_leader {
+        let genesis_validator = config.public_key.clone();
         std::thread::spawn(move || {
-            bootstrap_helper::<PeerInfo>(config.bootstrap_addr, config.peers)
+            bootstrap_helper::<PeerInfo, _>(config.bootstrap_addr, config.peers, genesis_validator)
         });
     }
 
@@ -50,7 +51,8 @@ fn bootstrap(config: BootstrapConfig) -> Node {
         listen_addr: listener.local_addr().unwrap(),
         public_key: config.public_key.clone(),
     };
-    let (my_index, peer_infos) = discover_peers(config.bootstrap_addr, peer_info);
+    let (my_index, peer_infos, genesis_validator) =
+        discover_peers::<PeerInfo, PublicKey>(config.bootstrap_addr, peer_info);
 
     let peer_addrs: Vec<_> = peer_infos.iter().map(|info| info.listen_addr).collect();
     let network = Broadcaster::<Message>::new(listener, &peer_addrs, my_index);
