@@ -126,6 +126,11 @@ impl Wallet {
     pub fn add_funds(&mut self, amount: u64) {
         self.balance += amount;
     }
+
+    pub fn set_stake(&mut self, amount: u64) {
+        assert!(amount <= self.balance);
+        self.stake = amount;
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]

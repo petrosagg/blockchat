@@ -35,17 +35,37 @@ impl Node {
     pub fn new(
         public_key: PublicKey,
         private_key: PrivateKey,
-        blockchain: Vec<Signed<Block>>,
+        genesis_validator: PublicKey,
+        genesis_funds: u64,
         capacity: usize,
         network: impl Network<Message> + 'static,
     ) -> Self {
+        let genesis_tx = Transaction {
+            sender_address: PublicKey::invalid(),
+            kind: TransactionKind::Coin(genesis_funds, genesis_validator.clone()),
+            nonce: 0,
+        };
+
+        let genesis_block = Block {
+            timestamp: std::time::UNIX_EPOCH,
+            transactions: vec![Signed::new_invalid(genesis_tx)],
+            validator: PublicKey::invalid(),
+            parent_hash: Hash::default(),
+        };
+
+        let mut wallets = BTreeMap::new();
+        let mut genesis_wallet = Wallet::with_public_key(genesis_validator.clone());
+        genesis_wallet.add_funds(genesis_funds);
+        genesis_wallet.set_stake(1);
+        wallets.insert(genesis_validator, genesis_wallet);
+
         Self {
             capacity,
             pending_transactions: BTreeMap::new(),
             public_key,
             private_key,
-            blockchain,
-            wallets: BTreeMap::new(),
+            blockchain: vec![Signed::new_invalid(genesis_block)],
+            wallets,
             network: Box::new(network),
         }
     }
@@ -80,6 +100,12 @@ impl Node {
         self.pending_transactions
             .insert((signer, tx.data.nonce), tx);
         // 2. Validate that there is enough balance
+    }
+
+    /// Broadcasts a transaction to the network
+    pub fn broadcast_transaction(&mut self, tx: Signed<Transaction>) {
+        self.handle_transaction(tx.clone());
+        self.network.send(&Message::Transaction(tx));
     }
 
     /// Attempts to append the given block to the tip of the maintained blockchain. Returns an
@@ -232,9 +258,10 @@ mod test {
 
         let (node_wallet, node_private_key) = Wallet::generate();
         let mut node = Node::new(
-            node_wallet.public_key,
+            node_wallet.public_key.clone(),
             node_private_key,
-            vec![],
+            node_wallet.public_key,
+            1_000_000,
             5,
             network1,
         );
