@@ -2,6 +2,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::crypto::{self, PrivateKey, PublicKey, Signed};
 
+const COIN_FEE_PERCENTAGE: f64 = 0.03;
+const BCC_PER_CHARACTER: u64 = 1;
+
 pub struct Wallet {
     /// The private key of this wallet.
     private_key: PrivateKey,
@@ -69,6 +72,18 @@ impl Wallet {
     }
 }
 
+impl Transaction {
+    pub fn calculate_fees(&mut self) -> u64 {
+        match &self.kind {
+            TransactionKind::Coin(amount, _) => {
+                ((*amount as f64) * COIN_FEE_PERCENTAGE).round() as u64
+            }
+            TransactionKind::Message(message, _) => message.len() as u64 * BCC_PER_CHARACTER,
+            _ => 0,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum TransactionKind {
     /// A coin transaction transferring the specified amount to the receiver.
@@ -89,7 +104,7 @@ mod test {
 
         let sender = wallet.public_key.clone();
         let (_, receiver) = crate::crypto::generate_keypair();
-        let coin_amount = 40;
+        let coin_amount = 50;
         let stake_amount = 100;
         let message = String::from("Hello World!");
 
@@ -102,19 +117,31 @@ mod test {
             TransactionKind::Coin(coin_amount, receiver.clone())
         );
         assert_eq!(tx.data.nonce, 0);
+        assert_eq!(
+            tx.data.calculate_fees(),
+            ((coin_amount as f64) * COIN_FEE_PERCENTAGE).round() as u64
+        );
 
-        tx = wallet.create_message_transaction(receiver.clone(), message.clone());
+        let mut tx = wallet.create_message_transaction(receiver.clone(), message.clone());
 
         assert!(sender.verify(tx.clone()).is_ok());
         assert_eq!(tx.data.sender_address, wallet.public_key);
-        assert_eq!(tx.data.kind, TransactionKind::Message(message, receiver));
+        assert_eq!(
+            tx.data.kind,
+            TransactionKind::Message(message.clone(), receiver)
+        );
         assert_eq!(tx.data.nonce, 1);
+        assert_eq!(
+            tx.data.calculate_fees(),
+            message.len() as u64 * BCC_PER_CHARACTER
+        );
 
-        tx = wallet.create_stake_transaction(stake_amount.clone());
+        let mut tx = wallet.create_stake_transaction(stake_amount.clone());
 
         assert!(sender.verify(tx.clone()).is_ok());
         assert_eq!(tx.data.sender_address, wallet.public_key);
         assert_eq!(tx.data.kind, TransactionKind::Stake(stake_amount));
         assert_eq!(tx.data.nonce, 2);
+        assert_eq!(tx.data.calculate_fees(), 0);
     }
 }
