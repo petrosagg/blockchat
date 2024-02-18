@@ -28,9 +28,23 @@ impl Wallet {
         (wallet, private_key)
     }
 
+    pub fn with_public_key(public_key: PublicKey) -> Self {
+        Self {
+            public_key,
+            balance: 0,
+            stake: 0,
+            nonce: 0,
+        }
+    }
+
     /// The amount of BCC available to use for transactions.
-    fn available_funds(&self) -> u64 {
+    pub fn available_funds(&self) -> u64 {
         self.balance - self.stake
+    }
+
+    /// The amount of BCC staked.
+    pub fn staked_amount(&self) -> u64 {
+        self.stake
     }
 
     fn create_tx(&mut self, kind: TransactionKind) -> Transaction {

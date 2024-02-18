@@ -1,14 +1,15 @@
 // Remove this when it's not a WIP
 #![allow(dead_code)]
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 use std::time::SystemTime;
 
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 
-use crate::crypto::{Hash, PublicKey, Signed};
+use crate::crypto::{Hash, PrivateKey, PublicKey, Signed};
+use crate::error::{Error, Result};
 use crate::network::Network;
 use crate::wallet::{Transaction, Wallet};
 
@@ -19,19 +20,21 @@ pub struct Node {
     pending_transactions: HashSet<Signed<Transaction>>,
     /// The current blockchain.
     blockchain: Vec<Signed<Block>>,
-    /// The wallet of this node.
-    wallet: Wallet,
-    /// The balances per public key.
-    balances: HashMap<PublicKey, WalletState>,
-    /// The stake amounts per public key.
-    stake_pool: Vec<(PublicKey, u64)>,
+    /// The public key of the wallet of this node.
+    public_key: PublicKey,
+    /// The private key of the wallet of this node.
+    private_key: PrivateKey,
+    /// The state of each known wallet indexed by public key. We use a BTreeMap to always maintain
+    /// the wallets in sorted public key order which helps perform the validator election.
+    wallets: BTreeMap<PublicKey, Wallet>,
     /// This node's handle to the network
     network: Box<dyn Network<Message>>,
 }
 
 impl Node {
     pub fn new(
-        wallet: Wallet,
+        public_key: PublicKey,
+        private_key: PrivateKey,
         blockchain: Vec<Signed<Block>>,
         capacity: usize,
         network: impl Network<Message> + 'static,
@@ -39,12 +42,10 @@ impl Node {
         Self {
             capacity,
             pending_transactions: HashSet::new(),
+            public_key,
+            private_key,
             blockchain,
-            wallet,
-            // Calculate the balances based on the provided blockchain
-            balances: HashMap::new(),
-            // Calculate the stake pool based on the provided blockchain
-            stake_pool: Vec::new(),
+            wallets: BTreeMap::new(),
             network: Box::new(network),
         }
     }
@@ -53,17 +54,17 @@ impl Node {
         // TODO: use the hash of the last block
         let mut rng = StdRng::seed_from_u64(self.blockchain.len() as u64);
         // Construct the ballot from the current set of
-        let total_stake: u64 = self.stake_pool.iter().map(|(_pk, stake)| *stake).sum();
+        let total_stake: u64 = self.wallets.values().map(|w| w.staked_amount()).sum();
         assert!(total_stake > 0, "no stakers, BlockChat is doomed");
 
         let mut winner = rng.gen_range(0..total_stake);
-        self.stake_pool
-            .iter()
-            .find_map(|(pk, stake)| {
-                if *stake > winner {
-                    Some(pk.clone())
+        self.wallets
+            .values()
+            .find_map(|wallet| {
+                if wallet.staked_amount() > winner {
+                    Some(wallet.public_key.clone())
                 } else {
-                    winner -= stake;
+                    winner -= wallet.staked_amount();
                     None
                 }
             })
@@ -82,7 +83,17 @@ impl Node {
 
     /// Attempts to append the given block to the tip of the maintained blockchain. Returns an
     /// error if the block is invalid.
-    fn handle_block(&mut self, _block: Signed<Block>) {
+    fn handle_block(&mut self, block: Signed<Block>) -> Result<()> {
+        // The block must be correctly signed
+        let signer = block.data.validator.clone();
+        let block = signer.verify(block)?;
+
+        // The signer must be the expected next validator
+        if signer != self.next_validator() {
+            return Err(Error::InvalidBlockValidator);
+        }
+
+        self.blockchain.push(block);
         // 1. validate that this block came from the leader and contains valid transactions.
         // 2. remove transactions referenced in the block from pending transactions
         // 3. update stake pool and wallet state
@@ -100,7 +111,9 @@ impl Node {
         while let Some(msg) = self.network.recv() {
             match msg {
                 Message::Transaction(tx) => self.handle_transaction(tx),
-                Message::Block(block) => self.handle_block(block),
+                Message::Block(block) => {
+                    let _ = self.handle_block(block);
+                }
             }
         }
     }
@@ -125,19 +138,6 @@ pub struct Block {
     parent_hash: Hash,
 }
 
-#[derive(Clone, Default)]
-pub struct WalletState {
-    // The current BCC balance of this wallet.
-    balance: u64,
-    // The highest nonce seen from this wallet.
-    nonce: u64,
-}
-
-#[derive(Clone, Default)]
-pub struct StakeState {
-    stake: u64,
-}
-
 #[cfg(test)]
 mod test {
     use crate::network::TestNetwork;
@@ -148,18 +148,24 @@ mod test {
     fn basic_test() {
         let (network1, mut network2) = TestNetwork::new();
 
-        let (node_wallet, _node_key) = Wallet::generate();
-        let mut node = Node::new(node_wallet, vec![], 5, network1);
+        let (node_wallet, node_private_key) = Wallet::generate();
+        let mut node = Node::new(
+            node_wallet.public_key,
+            node_private_key,
+            vec![],
+            5,
+            network1,
+        );
 
         // Now create a transaction from a wallet that is not tracked and send it to the node
         let (mut user_wallet, user_key) = Wallet::generate();
-        let tx = user_wallet.create_coin_tx(node.wallet.public_key.clone(), 42);
+        let tx = user_wallet.create_coin_tx(node.public_key.clone(), 42);
         network2.send(&Message::Transaction(user_key.sign(tx)));
         node.step();
         assert_eq!(node.pending_transactions.len(), 1);
 
         // Now create an invalid transaction and check that it's ignored
-        let tx = user_wallet.create_coin_tx(node.wallet.public_key.clone(), 42);
+        let tx = user_wallet.create_coin_tx(node.public_key.clone(), 42);
         let invalid_tx = Signed::new_invalid(tx);
         network2.send(&Message::Transaction(invalid_tx));
         node.step();

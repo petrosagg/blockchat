@@ -10,4 +10,6 @@ pub enum Error {
     InsufficientFunds,
     #[error("expected nonce to be at least ${1} but was ${0}")]
     NonceReused(u64, u64),
+    #[error("block signer is not the expected validator")]
+    InvalidBlockValidator,
 }
