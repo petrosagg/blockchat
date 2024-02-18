@@ -2,6 +2,7 @@
 #![allow(dead_code)]
 
 use std::collections::BTreeMap;
+use std::fmt;
 use std::time::SystemTime;
 
 use rand::rngs::StdRng;
@@ -29,6 +30,19 @@ pub struct Node {
     wallets: BTreeMap<PublicKey, Wallet>,
     /// This node's handle to the network
     network: Box<dyn Network<Message>>,
+}
+
+impl fmt::Debug for Node {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Node")
+            .field("capacity", &self.capacity)
+            .field("pending_transactions", &self.pending_transactions)
+            .field("blockchain", &self.blockchain)
+            .field("public_key", &self.public_key)
+            .field("private_key", &"REDACTED")
+            .field("wallets", &self.wallets)
+            .finish()
+    }
 }
 
 impl Node {

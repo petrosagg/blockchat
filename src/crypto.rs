@@ -1,7 +1,9 @@
 //! The definition of all cryptographic primitives used in BlockChat.
 
 use std::cmp::Ordering;
+use std::fmt;
 
+use base64::{display::Base64Display, engine::general_purpose::STANDARD_NO_PAD};
 use rsa::pkcs1v15::{Signature, SigningKey, VerifyingKey};
 use rsa::sha2::{Digest, Sha256};
 use rsa::signature::SignatureEncoding;
@@ -13,7 +15,7 @@ use crate::error::{Error, Result};
 
 pub const KEY_SIZE: usize = 2048;
 
-#[derive(Default, Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
+#[derive(Default, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub struct Hash([u8; 32]);
 
 impl Hash {
@@ -23,7 +25,13 @@ impl Hash {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
+impl fmt::Debug for Hash {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", hex::encode(&self.0))
+    }
+}
+
+#[derive(Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct PublicKey {
     key: RsaPublicKey,
     hash: Hash,
@@ -37,6 +45,12 @@ impl PartialOrd for PublicKey {
 impl Ord for PublicKey {
     fn cmp(&self, other: &Self) -> Ordering {
         self.hash.cmp(&other.hash)
+    }
+}
+
+impl fmt::Debug for PublicKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", Base64Display::new(&self.hash.0, &STANDARD_NO_PAD))
     }
 }
 
@@ -92,7 +106,7 @@ pub fn generate_keypair() -> (PrivateKey, PublicKey) {
 }
 
 /// A container of signed data
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Signed<T> {
     /// A signature proving that the sender wallet created this transaction.
     pub signature: Vec<u8>,
@@ -100,6 +114,16 @@ pub struct Signed<T> {
     pub hash: Hash,
     /// The data being signed,
     pub data: T,
+}
+
+impl<T: fmt::Debug> fmt::Debug for Signed<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Signed")
+            .field("signature", &"...")
+            .field("hash", &self.hash)
+            .field("data", &self.data)
+            .finish()
+    }
 }
 
 impl<T> Signed<T> {
