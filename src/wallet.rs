@@ -5,6 +5,7 @@ use crate::error::{Error, Result};
 
 const FEE_PERCENT: u64 = 3;
 
+#[derive(Clone, Debug)]
 pub struct Wallet {
     /// The public key of this wallet.
     pub public_key: PublicKey,
@@ -121,6 +122,10 @@ impl Wallet {
     pub fn create_stake_tx(&mut self, amount: u64) -> Transaction {
         self.create_tx(TransactionKind::Stake(amount))
     }
+
+    pub fn add_funds(&mut self, amount: u64) {
+        self.balance += amount;
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
@@ -151,6 +156,15 @@ impl Transaction {
             TransactionKind::Coin(amount, _) => (amount * FEE_PERCENT) / 100,
             TransactionKind::Message(msg, _) => msg.len() as u64,
             TransactionKind::Stake(_) => 0,
+        }
+    }
+
+    pub fn receiver(&self) -> Option<PublicKey> {
+        match &self.kind {
+            TransactionKind::Coin(_, receiver) | TransactionKind::Message(_, receiver) => {
+                Some(receiver.clone())
+            }
+            TransactionKind::Stake(_) => None,
         }
     }
 }

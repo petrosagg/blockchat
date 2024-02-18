@@ -1,7 +1,7 @@
 // Remove this when it's not a WIP
 #![allow(dead_code)]
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::BTreeMap;
 use std::time::SystemTime;
 
 use rand::rngs::StdRng;
@@ -11,13 +11,13 @@ use serde::{Deserialize, Serialize};
 use crate::crypto::{Hash, PrivateKey, PublicKey, Signed};
 use crate::error::{Error, Result};
 use crate::network::Network;
-use crate::wallet::{Transaction, Wallet};
+use crate::wallet::{Transaction, TransactionKind, Wallet};
 
 pub struct Node {
     /// The maximum number of transactions contained in each block.
     capacity: usize,
     /// The set of signed but not necessarily valid transactions waiting to be included in a block.
-    pending_transactions: HashSet<Signed<Transaction>>,
+    pending_transactions: BTreeMap<(PublicKey, u64), Signed<Transaction>>,
     /// The current blockchain.
     blockchain: Vec<Signed<Block>>,
     /// The public key of the wallet of this node.
@@ -41,7 +41,7 @@ impl Node {
     ) -> Self {
         Self {
             capacity,
-            pending_transactions: HashSet::new(),
+            pending_transactions: BTreeMap::new(),
             public_key,
             private_key,
             blockchain,
@@ -77,7 +77,8 @@ impl Node {
         let Ok(tx) = signer.verify(tx) else {
             return;
         };
-        self.pending_transactions.insert(tx);
+        self.pending_transactions
+            .insert((signer, tx.data.nonce), tx);
         // 2. Validate that there is enough balance
     }
 
@@ -85,24 +86,106 @@ impl Node {
     /// error if the block is invalid.
     fn handle_block(&mut self, block: Signed<Block>) -> Result<()> {
         // The block must be correctly signed
-        let signer = block.data.validator.clone();
-        let block = signer.verify(block)?;
+        let validator = block.data.validator.clone();
+        let block = validator.verify(block)?;
+
+        // TODO: Keep out-of-order blocks as pending.
 
         // The signer must be the expected next validator
-        if signer != self.next_validator() {
+        if validator != self.next_validator() {
             return Err(Error::InvalidBlockValidator);
         }
 
+        let mut total_fees = 0;
+        let mut new_wallets = self.wallets.clone();
+        for tx in block.data.transactions.iter() {
+            let sender = tx.data.sender_address.clone();
+            let sender_wallet = new_wallets
+                .entry(sender.clone())
+                .or_insert_with(|| Wallet::with_public_key(sender));
+
+            sender_wallet.apply_tx(tx.clone())?;
+
+            match &tx.data.kind {
+                TransactionKind::Coin(_, receiver) | TransactionKind::Message(_, receiver) => {
+                    let receiver_wallet = new_wallets
+                        .entry(receiver.clone())
+                        .or_insert_with(|| Wallet::with_public_key(receiver.clone()));
+
+                    receiver_wallet.apply_tx(tx.clone())?;
+                }
+                TransactionKind::Stake(_) => {}
+            }
+
+            total_fees += tx.data.fees();
+        }
+
+        let validator_wallet = new_wallets
+            .entry(validator.clone())
+            .or_insert_with(|| Wallet::with_public_key(validator));
+        validator_wallet.add_funds(total_fees);
+
+        for tx in block.data.transactions.iter() {
+            self.pending_transactions
+                .remove(&(tx.data.sender_address.clone(), tx.data.nonce));
+        }
+
+        self.wallets = new_wallets;
         self.blockchain.push(block);
-        // 1. validate that this block came from the leader and contains valid transactions.
-        // 2. remove transactions referenced in the block from pending transactions
-        // 3. update stake pool and wallet state
-        todo!()
+
+        Ok(())
     }
 
     /// Mints a block with at most `capacity` transactions.
     fn mint_block(&mut self) -> Signed<Block> {
-        todo!()
+        let mut tmp_wallets = self.wallets.clone();
+
+        let pending_transactions = std::mem::take(&mut self.pending_transactions);
+        let mut transactions = Vec::new();
+
+        for (key, tx) in pending_transactions {
+            let sender = tx.data.sender_address.clone();
+            let sender_wallet = tmp_wallets
+                .entry(sender.clone())
+                .or_insert_with(|| Wallet::with_public_key(sender.clone()));
+
+            match sender_wallet.apply_tx(tx.clone()) {
+                Err(Error::NonceReused(_, _)) => continue,
+                Err(_) => {
+                    self.pending_transactions.insert(key, tx);
+                    continue;
+                }
+                Ok(_) => match tx.data.receiver() {
+                    Some(receiver) => {
+                        let receiver_wallet = tmp_wallets
+                            .entry(receiver.clone())
+                            .or_insert_with(|| Wallet::with_public_key(receiver.clone()));
+                        match receiver_wallet.apply_tx(tx.clone()) {
+                            Ok(_) => {}
+                            Err(_) => {
+                                self.pending_transactions.insert(key, tx);
+                                continue;
+                            }
+                        }
+                    }
+                    None => {}
+                },
+            }
+
+            if transactions.len() < self.capacity {
+                transactions.push(tx);
+            }
+        }
+
+        let new_block = Block {
+            timestamp: SystemTime::now(),
+            transactions,
+            validator: self.public_key.clone(),
+            parent_hash: Hash,
+            // TODO: Fix the parent hash.
+        };
+
+        self.private_key.sign(new_block)
     }
 
     fn step(&mut self) {
