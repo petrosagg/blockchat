@@ -3,8 +3,8 @@
 
 use std::collections::BTreeMap;
 use std::fmt;
-use std::time::SystemTime;
 
+use chrono::{Utc, DateTime};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
@@ -61,7 +61,7 @@ impl Node {
         };
 
         let genesis_block = Block {
-            timestamp: std::time::UNIX_EPOCH,
+            timestamp: DateTime::<Utc>::MIN_UTC,
             transactions: vec![Signed::new_invalid(genesis_tx)],
             validator: PublicKey::invalid(),
             parent_hash: Hash::default(),
@@ -221,7 +221,7 @@ impl Node {
         }
 
         let new_block = Block {
-            timestamp: SystemTime::now(),
+            timestamp: Utc::now(),
             transactions,
             validator: self.public_key.clone(),
             parent_hash: self.blockchain.last().unwrap().hash.clone(),
@@ -254,7 +254,7 @@ pub enum Message {
 pub struct Block {
     /// The creation timestamp of this block
     // TODO: change this to a type from `chrono`
-    timestamp: SystemTime,
+    timestamp: DateTime<Utc>,
     /// The list of transactions contained in this block.
     transactions: Vec<Signed<Transaction>>,
     /// The public key of the node that minted this block.
