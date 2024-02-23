@@ -126,13 +126,13 @@ impl<T: fmt::Debug> fmt::Debug for Signed<T> {
     }
 }
 
-impl<T> Signed<T> {
+impl<T: Serialize + Clone> Signed<T> {
     /// Creates an invalid a signed object whose signature is invalid. This is used for generating
     /// the genesis block and for testing.
     pub fn new_invalid(data: T) -> Signed<T> {
         Signed {
             signature: vec![],
-            hash: Default::default(),
+            hash: Hash::digest(data.clone()),
             data,
         }
     }
