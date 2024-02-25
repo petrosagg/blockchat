@@ -103,8 +103,10 @@ mod test {
         let bootstrap_addr = "127.0.0.1:7000".parse().unwrap();
         let listen_ip = "127.0.0.1".parse().unwrap();
 
-        const PEERS: usize = 2;
+        const PEERS: usize = 5;
         const CAPACITY: usize = 5;
+
+        let mut node_handles = vec![];
 
         // Start threads for the non-leader nodes
         for _ in 1..PEERS {
@@ -118,9 +120,13 @@ mod test {
                 public_key,
                 private_key,
             };
-            std::thread::spawn(move || {
-                let _node = bootstrap(config);
+            let handle = std::thread::spawn(move || {
+                let mut node = bootstrap(config);
+                while node.blockchain().len() < 2 {
+                    node.step();
+                }
             });
+            node_handles.push(handle);
         }
 
         // Start the leader node and verify its state
@@ -134,7 +140,12 @@ mod test {
             public_key,
             private_key,
         };
-        let node = bootstrap(config);
-        dbg!(node);
+        let mut node = bootstrap(config);
+        while node.blockchain().len() < 2 {
+            node.step();
+        }
+        for handle in node_handles {
+            handle.join().expect("node panicked");
+        }
     }
 }

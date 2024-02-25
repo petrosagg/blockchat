@@ -12,7 +12,7 @@ use crate::error::{Error, Result};
 use crate::network::Network;
 use crate::wallet::{Transaction, TransactionKind, Wallet};
 
-const MINT_INTERVAL: Duration = Duration::from_secs(5);
+const MINT_INTERVAL: Duration = Duration::from_secs(1);
 
 pub struct Node {
     // The name of this node. Used for logging
@@ -107,6 +107,10 @@ impl Node {
                 }
             })
             .unwrap()
+    }
+
+    pub fn blockchain(&self) -> &[Signed<Block>] {
+        &self.blockchain
     }
 
     /// Adds a transaction in the set of pending transactions
