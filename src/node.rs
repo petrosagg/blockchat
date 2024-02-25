@@ -280,7 +280,6 @@ pub enum Message {
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Block {
     /// The creation timestamp of this block
-    // TODO: change this to a type from `chrono`
     timestamp: DateTime<Utc>,
     /// The list of transactions contained in this block.
     transactions: Vec<Signed<Transaction>>,
