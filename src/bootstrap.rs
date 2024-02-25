@@ -18,19 +18,19 @@ const GENESIS_FUNDS_PER_NODE: u64 = 1000;
 
 pub struct BootstrapConfig {
     /// Whether this node is responsible for running the bootstrap helper
-    bootstrap_leader: bool,
+    pub bootstrap_leader: bool,
     /// The capacity per block.
-    capacity: usize,
+    pub capacity: usize,
     // The number of expected nodes in the system.
-    peers: usize,
+    pub peers: usize,
     /// The socket address of the bootstrap helper.
-    bootstrap_addr: SocketAddr,
+    pub bootstrap_addr: SocketAddr,
     /// The socket address this node should listen to.
-    listen_ip: IpAddr,
+    pub listen_ip: IpAddr,
     /// The public_key of this node.
-    public_key: PublicKey,
+    pub public_key: PublicKey,
     /// The private key of this node.
-    private_key: PrivateKey,
+    pub private_key: PrivateKey,
 }
 
 /// The peer info exchanged during discovery.
@@ -42,7 +42,7 @@ struct PeerInfo {
     public_key: PublicKey,
 }
 
-fn bootstrap(config: BootstrapConfig) -> (Node, Broadcaster<Message>) {
+pub fn bootstrap(config: BootstrapConfig) -> (Node, Broadcaster<Message>) {
     if config.bootstrap_leader {
         let genesis_validator = config.public_key.clone();
         std::thread::spawn(move || {
