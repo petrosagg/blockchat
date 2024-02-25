@@ -20,5 +20,12 @@ thiserror = "1"
 log = "0.4"
 pretty_env_logger = "0.5"
 
+[dev-dependencies]
+criterion = { version = "0.4", features = ["html_reports"] }
+
+[[bench]]
+name = "performance"
+harness = false
+
 [profile.dev.package.num-bigint-dig]
 opt-level = 3
