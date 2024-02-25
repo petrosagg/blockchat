@@ -1,10 +1,8 @@
-// Remove this when it's not a WIP
-#![allow(dead_code)]
-
 use std::collections::BTreeMap;
 use std::fmt;
+use std::time::Duration;
 
-use chrono::{Utc, DateTime};
+use chrono::{DateTime, Utc};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
@@ -13,6 +11,8 @@ use crate::crypto::{Hash, PrivateKey, PublicKey, Signed};
 use crate::error::{Error, Result};
 use crate::network::Network;
 use crate::wallet::{Transaction, TransactionKind, Wallet};
+
+const MINT_INTERVAL: Duration = Duration::from_secs(5);
 
 pub struct Node {
     /// The maximum number of transactions contained in each block.
@@ -106,7 +106,7 @@ impl Node {
     }
 
     /// Adds a transaction in the set of pending transactions
-    fn handle_transaction(&mut self, tx: Signed<Transaction>) {
+    pub fn handle_transaction(&mut self, tx: Signed<Transaction>) {
         let signer = tx.data.sender_address.clone();
         let Ok(tx) = signer.verify(tx) else {
             return;
@@ -122,9 +122,16 @@ impl Node {
         self.network.send(&Message::Transaction(tx));
     }
 
+    /// Broadcasts a block to the network
+    fn broadcast_block(&mut self, block: Signed<Block>) {
+        self.handle_block(block.clone())
+            .expect("minted block was invalid");
+        self.network.send(&Message::Block(block));
+    }
+
     /// Attempts to append the given block to the tip of the maintained blockchain. Returns an
     /// error if the block is invalid.
-    fn handle_block(&mut self, block: Signed<Block>) -> Result<()> {
+    pub fn handle_block(&mut self, block: Signed<Block>) -> Result<()> {
         // The block must be correctly signed
         let validator = block.data.validator.clone();
         let block = validator.verify(block)?;
@@ -177,7 +184,7 @@ impl Node {
     }
 
     /// Mints a block with at most `capacity` transactions.
-    fn mint_block(&mut self) -> Signed<Block> {
+    pub fn mint_block(&mut self) -> Signed<Block> {
         let mut tmp_wallets = self.wallets.clone();
 
         let pending_transactions = std::mem::take(&mut self.pending_transactions);
@@ -230,9 +237,10 @@ impl Node {
         self.private_key.sign(new_block)
     }
 
-    fn step(&mut self) {
+    pub fn step(&mut self) {
         // First handle all pending messages from the network
-        self.network.await_events(None);
+        // TODO: calculate the duration to the next minting instance.
+        self.network.await_events(Some(MINT_INTERVAL));
         while let Some(msg) = self.network.recv() {
             match msg {
                 Message::Transaction(tx) => self.handle_transaction(tx),
@@ -240,6 +248,10 @@ impl Node {
                     let _ = self.handle_block(block);
                 }
             }
+        }
+        if self.public_key == self.next_validator() {
+            let block = self.mint_block();
+            self.broadcast_block(block);
         }
     }
 }
