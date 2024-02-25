@@ -20,13 +20,7 @@ pub struct Wallet {
 impl Wallet {
     pub fn generate() -> (Self, PrivateKey) {
         let (private_key, public_key) = crypto::generate_keypair();
-        let wallet = Self {
-            public_key,
-            balance: 0,
-            stake: 0,
-            nonce: 0,
-        };
-        (wallet, private_key)
+        (Self::with_public_key(public_key), private_key)
     }
 
     pub fn with_public_key(public_key: PublicKey) -> Self {
