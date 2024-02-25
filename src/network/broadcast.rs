@@ -38,14 +38,14 @@ impl<T: Serialize + DeserializeOwned + Clone + Send + 'static> Broadcaster<T> {
                     buf.clear();
                     match read_socket.read_line(&mut buf) {
                         Ok(0) => {
-                            println!("Peer EOF");
+                            log::warn!("Peer EOF");
                             return;
                         }
                         Ok(_) => {
                             read_tx.send(serde_json::from_str(&buf).unwrap()).unwrap();
                         }
                         Err(err) => {
-                            println!("Connection error: {err}");
+                            log::error!("Connection error: {err}");
                             return;
                         }
                     }
@@ -96,27 +96,31 @@ impl<T: Serialize + DeserializeOwned + Clone + Send + 'static> Network<T> for Br
 
 /// Connects to the provided list of peers. Returns the established TCP streams.
 fn start_connections(peers: &[SocketAddr]) -> Vec<TcpStream> {
+    let max_attempts = 5;
     let mut streams = vec![];
-    println!("Connecting to {} peers", peers.len());
-    for peer in peers {
+    'peers: for peer in peers {
         // Make 5 attempts at connecting
         // TODO(petrosagg): Replace with the retry crate
-        for attempt in 1..=5 {
-            println!("Connecting to {peer} attempt {attempt}");
+        for attempt in 1..=max_attempts {
+            log::debug!("connecting to {peer} attempt {attempt}/{max_attempts}");
 
             match TcpStream::connect(peer) {
                 Ok(stream) => {
-                    println!("Successful connection to {peer}");
+                    log::info!("connected to {peer}");
                     stream.set_nodelay(true).expect("set_nodelay call failed");
                     streams.push(stream);
-                    break;
+                    continue 'peers;
                 }
                 Err(error) => {
-                    println!("Failed connecting to {peer}: {error}");
+                    log::warn!("Failed connecting to {peer}: {error}");
                     std::thread::sleep(Duration::from_millis(200));
                 }
             }
         }
+        log::error!(
+            "Failed connecting to {peer} after {} attempts",
+            max_attempts
+        );
     }
     streams
 }

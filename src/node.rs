@@ -15,6 +15,8 @@ use crate::wallet::{Transaction, TransactionKind, Wallet};
 const MINT_INTERVAL: Duration = Duration::from_secs(5);
 
 pub struct Node {
+    // The name of this node. Used for logging
+    name: String,
     /// The maximum number of transactions contained in each block.
     capacity: usize,
     /// The set of signed but not necessarily valid transactions waiting to be included in a block.
@@ -47,6 +49,7 @@ impl fmt::Debug for Node {
 
 impl Node {
     pub fn new(
+        name: String,
         public_key: PublicKey,
         private_key: PrivateKey,
         genesis_validator: PublicKey,
@@ -74,6 +77,7 @@ impl Node {
         wallets.insert(genesis_validator, genesis_wallet);
 
         Self {
+            name,
             capacity,
             pending_transactions: BTreeMap::new(),
             public_key,
@@ -132,6 +136,11 @@ impl Node {
     /// Attempts to append the given block to the tip of the maintained blockchain. Returns an
     /// error if the block is invalid.
     pub fn handle_block(&mut self, block: Signed<Block>) -> Result<()> {
+        log::debug!(
+            "{}: handling block containing {} transactions",
+            self.name,
+            block.data.transactions.len()
+        );
         // The block must be correctly signed
         let validator = block.data.validator.clone();
         let block = validator.verify(block)?;
@@ -287,6 +296,7 @@ mod test {
 
         let (node_wallet, node_private_key) = Wallet::generate();
         let mut node = Node::new(
+            "test_node".into(),
             node_wallet.public_key.clone(),
             node_private_key,
             node_wallet.public_key,
@@ -317,6 +327,7 @@ mod test {
         let (receiver_wallet, _) = crate::wallet::test::setup_default_test_wallet();
 
         let mut node = Node::new(
+            "test_node".into(),
             node_wallet.public_key.clone(),
             node_private_key.clone(),
             node_wallet.public_key.clone(),

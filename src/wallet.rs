@@ -303,7 +303,6 @@ pub mod test {
         let message = String::from("These are 24 characters.");
         let tx = sender_wallet.create_message_tx(receiver_wallet.public_key.clone(), message);
         let signed_tx = sender_key.sign(tx.clone());
-        println!("{:?}", tx.fees());
 
         let result = sender_wallet.apply_tx(signed_tx.clone());
         assert!(matches!(result, Err(Error::InsufficientFunds)));

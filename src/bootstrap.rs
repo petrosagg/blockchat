@@ -64,6 +64,7 @@ fn bootstrap(config: BootstrapConfig) -> Node {
     let genesis_funds = GENESIS_FUNDS_PER_NODE * (config.peers as u64);
 
     let mut node = Node::new(
+        format!("node-{my_index}"),
         config.public_key,
         config.private_key.clone(),
         genesis_validator.clone(),
@@ -97,6 +98,8 @@ mod test {
 
     #[test]
     fn bootstrap_small_cluster() {
+        pretty_env_logger::init();
+
         let bootstrap_addr = "127.0.0.1:7000".parse().unwrap();
         let listen_ip = "127.0.0.1".parse().unwrap();
 
