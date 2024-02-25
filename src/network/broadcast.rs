@@ -35,6 +35,7 @@ impl<T: Serialize + DeserializeOwned + Clone + Send + 'static> Broadcaster<T> {
             std::thread::spawn(move || {
                 let mut buf = String::new();
                 loop {
+                    buf.clear();
                     match read_socket.read_line(&mut buf) {
                         Ok(0) => {
                             println!("Peer EOF");
