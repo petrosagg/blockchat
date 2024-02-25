@@ -4,6 +4,7 @@ use std::str::FromStr;
 
 use crate::crypto::PublicKey;
 
+#[derive(Debug)]
 pub enum Command {
     NewTransaction(NewTransactionCommand),
     NewMessage(NewMessageCommand),
@@ -30,40 +31,46 @@ impl FromStr for Command {
     }
 }
 
+#[derive(Debug)]
 pub struct NewTransactionCommand {
-    recipient: PublicKey,
-    amount: String,
+    pub recipient: PublicKey,
+    pub amount: String,
 }
 
 impl FromStr for NewTransactionCommand {
     type Err = String;
 
     fn from_str(_cmd: &str) -> Result<Self, Self::Err> {
+        // TODO parse cmd which is in the form of "t <public_key> <amount>"
         todo!()
     }
 }
 
+#[derive(Debug)]
 pub struct NewMessageCommand {
-    recipient: PublicKey,
-    message: String,
+    pub recipient: PublicKey,
+    pub message: String,
 }
 
 impl FromStr for NewMessageCommand {
     type Err = String;
 
     fn from_str(_cmd: &str) -> Result<Self, Self::Err> {
+        // TODO parse cmd which is in the form of "t <public_key> <message>"
         todo!()
     }
 }
 
+#[derive(Debug)]
 pub struct StakeCommand {
-    amount: u64,
+    pub amount: u64,
 }
 
 impl FromStr for StakeCommand {
     type Err = String;
 
     fn from_str(_cmd: &str) -> Result<Self, Self::Err> {
+        // TODO parse cmd which is in the form of "stake <amount>"
         todo!()
     }
 }

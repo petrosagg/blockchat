@@ -1,3 +1,3 @@
 //! Types related to the CLI
 
-mod command;
+pub mod command;
