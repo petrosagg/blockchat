@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::time::Duration;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, TimeDelta, Utc};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
@@ -114,19 +114,20 @@ impl Node {
     }
 
     /// Adds a transaction in the set of pending transactions
-    pub fn handle_transaction(&mut self, tx: Signed<Transaction>) {
+    pub fn handle_transaction(&mut self, tx: Signed<Transaction>) -> Result<()> {
         let signer = tx.data.sender_address.clone();
-        let Ok(tx) = signer.verify(tx) else {
-            return;
-        };
+        let tx = signer.verify(tx)?;
         self.pending_transactions
             .insert((signer, tx.data.nonce), tx);
         // 2. Validate that there is enough balance
+        Ok(())
     }
 
     /// Broadcasts a transaction to the network
     pub fn broadcast_transaction(&mut self, tx: Signed<Transaction>) {
-        self.handle_transaction(tx.clone());
+        if let Err(err) = self.handle_transaction(tx.clone()) {
+            log::warn!("{}: broadcasting invalid transaction {err}", self.name);
+        }
         self.network.send(&Message::Transaction(tx));
     }
 
@@ -140,7 +141,7 @@ impl Node {
     /// Attempts to append the given block to the tip of the maintained blockchain. Returns an
     /// error if the block is invalid.
     pub fn handle_block(&mut self, block: Signed<Block>) -> Result<()> {
-        log::debug!(
+        log::trace!(
             "{}: handling block containing {} transactions",
             self.name,
             block.data.transactions.len()
@@ -186,13 +187,14 @@ impl Node {
         validator_wallet.add_funds(total_fees);
 
         for tx in block.data.transactions.iter() {
+            log::trace!("{}: accepted valid tx {:?}", self.name, tx.hash);
             self.pending_transactions
                 .remove(&(tx.data.sender_address.clone(), tx.data.nonce));
         }
 
         self.wallets = new_wallets;
+        log::info!("{}: accepted valid block {:?}", self.name, block.hash);
         self.blockchain.push(block);
-
         Ok(())
     }
 
@@ -252,18 +254,32 @@ impl Node {
 
     pub fn step(&mut self) {
         // First handle all pending messages from the network
-        // TODO: calculate the duration to the next minting instance.
-        self.network.await_events(Some(MINT_INTERVAL));
+        let is_validator = self.public_key == self.next_validator();
+
+        let event_timeout = if is_validator {
+            let last_block_ts = self.blockchain().last().unwrap().data.timestamp;
+            let next_block_ts = last_block_ts + MINT_INTERVAL;
+            let timeout = std::cmp::max(TimeDelta::zero(), next_block_ts - Utc::now());
+            Some(timeout.to_std().unwrap())
+        } else {
+            None
+        };
+        self.network.await_events(event_timeout);
         while let Some(msg) = self.network.recv() {
             match msg {
-                Message::Transaction(tx) => self.handle_transaction(tx),
-                Message::Block(block) => {
-                    let _ = self.handle_block(block);
-                }
+                Message::Transaction(tx) => match self.handle_transaction(tx) {
+                    Ok(_) => {}
+                    Err(err) => log::info!("{}: rejected invalid transaction {err}", self.name),
+                },
+                Message::Block(block) => match self.handle_block(block) {
+                    Ok(_) => {}
+                    Err(err) => log::info!("{}: rejected invalid block {err}", self.name),
+                },
             }
         }
-        if self.public_key == self.next_validator() {
+        if is_validator {
             let block = self.mint_block();
+            log::info!("{}: broadcasting minted block {:?}", self.name, block.hash);
             self.broadcast_block(block);
         }
     }
@@ -352,7 +368,7 @@ mod test {
             let signed_tx = node_private_key.sign(tx.clone());
 
             node_wallet.apply_tx(signed_tx.clone()).unwrap();
-            node.handle_transaction(signed_tx.clone());
+            node.handle_transaction(signed_tx.clone()).unwrap();
 
             if transactions.len() < node.capacity {
                 transactions.push(signed_tx);
