@@ -14,18 +14,18 @@ fn main() -> Result<()> {
                     Ok(cmd) => println!("Recognized command: {cmd:?}"),
                     Err(err) => println!("Error: {err:?}"),
                 }
-            },
+            }
             Err(ReadlineError::Interrupted) => {
                 println!("CTRL-C");
-                break
-            },
+                break;
+            }
             Err(ReadlineError::Eof) => {
                 println!("CTRL-D");
-                break
-            },
+                break;
+            }
             Err(err) => {
                 println!("Error: {:?}", err);
-                break
+                break;
             }
         }
     }
