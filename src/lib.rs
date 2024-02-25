@@ -1,6 +1,7 @@
 #![allow(clippy::single_match)]
 
 pub mod bootstrap;
+pub mod cli;
 pub mod crypto;
 pub mod error;
 pub mod network;
