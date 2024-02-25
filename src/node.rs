@@ -200,11 +200,14 @@ impl Node {
                         let receiver_wallet = tmp_wallets
                             .entry(receiver.clone())
                             .or_insert_with(|| Wallet::with_public_key(receiver.clone()));
-                        match receiver_wallet.apply_tx(tx.clone()) {
-                            Ok(_) => {}
-                            Err(_) => {
-                                self.pending_transactions.insert(key, tx);
-                                continue;
+
+                        if sender != receiver {
+                            match receiver_wallet.apply_tx(tx.clone()) {
+                                Ok(_) => {}
+                                Err(_) => {
+                                    self.pending_transactions.insert(key, tx);
+                                    continue;
+                                }
                             }
                         }
                     }
@@ -293,5 +296,46 @@ mod test {
         network2.send(&Message::Transaction(invalid_tx));
         node.step();
         assert_eq!(node.pending_transactions.len(), 1);
+    }
+
+    #[test]
+    fn test_mint_block() {
+        let (network1, _) = TestNetwork::new();
+        let (mut node_wallet, node_private_key) = crate::wallet::test::setup_default_test_wallet();
+        let (receiver_wallet, _) = crate::wallet::test::setup_default_test_wallet();
+
+        let mut node = Node::new(
+            node_wallet.public_key.clone(),
+            node_private_key.clone(),
+            node_wallet.public_key.clone(),
+            1_000_000,
+            5,
+            network1,
+        );
+
+        const TRANSACTION_COUNT: usize = 7;
+        let coin_amount = 1000;
+        let mut transactions = Vec::new();
+
+        // Apply more transactions than the block capacity
+        for _ in 0..TRANSACTION_COUNT {
+            let tx = node_wallet
+                .clone()
+                .create_coin_tx(receiver_wallet.clone().public_key, coin_amount);
+            let signed_tx = node_private_key.sign(tx.clone());
+
+            node_wallet.apply_tx(signed_tx.clone()).unwrap();
+            node.handle_transaction(signed_tx.clone());
+
+            if transactions.len() < node.capacity {
+                transactions.push(signed_tx);
+            }
+        }
+
+        let block = node.mint_block();
+        assert_eq!(block.data.transactions.len(), 5);
+        assert_eq!(block.data.transactions, transactions);
+        assert_eq!(block.data.validator, node_wallet.public_key);
+        assert_eq!(block.data.parent_hash, node.blockchain[0].hash);
     }
 }

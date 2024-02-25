@@ -175,11 +175,11 @@ impl Transaction {
 }
 
 #[cfg(test)]
-mod test {
+pub mod test {
     use super::*;
 
     /// Creates a test wallet with 1M BCC as initial funds
-    fn setup_test_wallet(initial_balance: u64) -> (Wallet, PrivateKey) {
+    pub fn setup_test_wallet(initial_balance: u64) -> (Wallet, PrivateKey) {
         let (mut wallet, wallet_key) = Wallet::generate();
         // Create Alice's keypair and give some initial funds to the test wallet
         let (funder_key, funder_public_key) = crate::crypto::generate_keypair();
@@ -192,7 +192,7 @@ mod test {
         (wallet, wallet_key)
     }
 
-    fn setup_default_test_wallet() -> (Wallet, PrivateKey) {
+    pub fn setup_default_test_wallet() -> (Wallet, PrivateKey) {
         setup_test_wallet(1_000_000)
     }
 
