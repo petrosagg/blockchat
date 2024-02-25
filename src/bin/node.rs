@@ -54,6 +54,4 @@ fn main() -> std::io::Result<()> {
         let timeout = node.step(&mut network);
         network.await_events(timeout);
     }
-
-    Ok(())
 }
