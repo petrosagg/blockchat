@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::time::Duration;
 
-use chrono::{DateTime, TimeDelta, Utc};
+use chrono::{DateTime, Utc};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
@@ -30,8 +30,6 @@ pub struct Node {
     /// The state of each known wallet indexed by public key. We use a BTreeMap to always maintain
     /// the wallets in sorted public key order which helps perform the validator election.
     wallets: BTreeMap<PublicKey, Wallet>,
-    /// This node's handle to the network
-    network: Box<dyn Network<Message>>,
 }
 
 impl fmt::Debug for Node {
@@ -55,7 +53,6 @@ impl Node {
         genesis_validator: PublicKey,
         genesis_funds: u64,
         capacity: usize,
-        network: impl Network<Message> + 'static,
     ) -> Self {
         let genesis_tx = Transaction {
             sender_address: PublicKey::invalid(),
@@ -84,7 +81,6 @@ impl Node {
             private_key,
             blockchain: vec![Signed::new_invalid(genesis_block)],
             wallets,
-            network: Box::new(network),
         }
     }
 
@@ -121,21 +117,6 @@ impl Node {
             .insert((signer, tx.data.nonce), tx);
         // 2. Validate that there is enough balance
         Ok(())
-    }
-
-    /// Broadcasts a transaction to the network
-    pub fn broadcast_transaction(&mut self, tx: Signed<Transaction>) {
-        if let Err(err) = self.handle_transaction(tx.clone()) {
-            log::warn!("{}: broadcasting invalid transaction {err}", self.name);
-        }
-        self.network.send(&Message::Transaction(tx));
-    }
-
-    /// Broadcasts a block to the network
-    fn broadcast_block(&mut self, block: Signed<Block>) {
-        self.handle_block(block.clone())
-            .expect("minted block was invalid");
-        self.network.send(&Message::Block(block));
     }
 
     /// Attempts to append the given block to the tip of the maintained blockchain. Returns an
@@ -252,20 +233,9 @@ impl Node {
         self.private_key.sign(new_block)
     }
 
-    pub fn step(&mut self) {
+    pub fn step<N: Network<Message>>(&mut self, network: &mut N) -> Option<Duration> {
         // First handle all pending messages from the network
-        let is_validator = self.public_key == self.next_validator();
-
-        let event_timeout = if is_validator {
-            let last_block_ts = self.blockchain().last().unwrap().data.timestamp;
-            let next_block_ts = last_block_ts + MINT_INTERVAL;
-            let timeout = std::cmp::max(TimeDelta::zero(), next_block_ts - Utc::now());
-            Some(timeout.to_std().unwrap())
-        } else {
-            None
-        };
-        self.network.await_events(event_timeout);
-        while let Some(msg) = self.network.recv() {
+        while let Some(msg) = network.recv() {
             match msg {
                 Message::Transaction(tx) => match self.handle_transaction(tx) {
                     Ok(_) => {}
@@ -277,10 +247,26 @@ impl Node {
                 },
             }
         }
-        if is_validator {
-            let block = self.mint_block();
-            log::info!("{}: broadcasting minted block {:?}", self.name, block.hash);
-            self.broadcast_block(block);
+
+        if self.public_key == self.next_validator() {
+            let last_block_ts = self.blockchain().last().unwrap().data.timestamp;
+            let next_block_ts = last_block_ts + MINT_INTERVAL;
+            if Utc::now() > next_block_ts {
+                let block = self.mint_block();
+                log::info!("{}: broadcasting minted block {:?}", self.name, block.hash);
+                self.handle_block(block.clone())
+                    .expect("minted block was invalid");
+                network.send(&Message::Block(block));
+                if self.public_key == self.next_validator() {
+                    Some(MINT_INTERVAL)
+                } else {
+                    None
+                }
+            } else {
+                Some((next_block_ts - Utc::now()).to_std().unwrap())
+            }
+        } else {
+            None
         }
     }
 }
@@ -312,7 +298,7 @@ mod test {
 
     #[test]
     fn basic_test() {
-        let (network1, mut network2) = TestNetwork::new();
+        let (mut network1, mut network2) = TestNetwork::new();
 
         let (node_wallet, node_private_key) = Wallet::generate();
         let mut node = Node::new(
@@ -322,27 +308,25 @@ mod test {
             node_wallet.public_key,
             1_000_000,
             5,
-            network1,
         );
 
         // Now create a transaction from a wallet that is not tracked and send it to the node
         let (mut user_wallet, user_key) = Wallet::generate();
         let tx = user_wallet.create_coin_tx(node.public_key.clone(), 42);
         network2.send(&Message::Transaction(user_key.sign(tx)));
-        node.step();
+        node.step(&mut network1);
         assert_eq!(node.pending_transactions.len(), 1);
 
         // Now create an invalid transaction and check that it's ignored
         let tx = user_wallet.create_coin_tx(node.public_key.clone(), 42);
         let invalid_tx = Signed::new_invalid(tx);
         network2.send(&Message::Transaction(invalid_tx));
-        node.step();
+        node.step(&mut network1);
         assert_eq!(node.pending_transactions.len(), 1);
     }
 
     #[test]
     fn test_mint_block() {
-        let (network1, _) = TestNetwork::new();
         let (mut node_wallet, node_private_key) = crate::wallet::test::setup_default_test_wallet();
         let (receiver_wallet, _) = crate::wallet::test::setup_default_test_wallet();
 
@@ -353,7 +337,6 @@ mod test {
             node_wallet.public_key.clone(),
             1_000_000,
             5,
-            network1,
         );
 
         const TRANSACTION_COUNT: usize = 7;

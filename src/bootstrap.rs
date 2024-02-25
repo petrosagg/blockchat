@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::crypto::{PrivateKey, PublicKey};
 use crate::network::broadcast::Broadcaster;
 use crate::network::discovery::{bootstrap_helper, discover_peers};
+use crate::network::Network;
 use crate::node::{Message, Node};
 use crate::wallet::Wallet;
 
@@ -41,7 +42,7 @@ struct PeerInfo {
     public_key: PublicKey,
 }
 
-fn bootstrap(config: BootstrapConfig) -> Node {
+fn bootstrap(config: BootstrapConfig) -> (Node, Broadcaster<Message>) {
     if config.bootstrap_leader {
         let genesis_validator = config.public_key.clone();
         std::thread::spawn(move || {
@@ -59,18 +60,17 @@ fn bootstrap(config: BootstrapConfig) -> Node {
         discover_peers::<PeerInfo, PublicKey>(config.bootstrap_addr, peer_info);
 
     let peer_addrs: Vec<_> = peer_infos.iter().map(|info| info.listen_addr).collect();
-    let network = Broadcaster::<Message>::new(listener, &peer_addrs, my_index);
+    let mut network = Broadcaster::<Message>::new(listener, &peer_addrs, my_index);
 
     let genesis_funds = GENESIS_FUNDS_PER_NODE * (config.peers as u64);
 
-    let mut node = Node::new(
+    let node = Node::new(
         format!("node-{my_index}"),
         config.public_key,
         config.private_key.clone(),
         genesis_validator.clone(),
         genesis_funds,
         config.capacity,
-        network,
     );
 
     if config.bootstrap_leader {
@@ -83,11 +83,11 @@ fn bootstrap(config: BootstrapConfig) -> Node {
             }
             let tx = genesis_wallet.create_coin_tx(peer_info.public_key, 1000);
             let signed_tx = config.private_key.sign(tx);
-            node.broadcast_transaction(signed_tx);
+            network.send(&Message::Transaction(signed_tx));
         }
     }
 
-    node
+    (node, network)
 }
 
 #[cfg(test)]
@@ -121,9 +121,13 @@ mod test {
                 private_key,
             };
             let handle = std::thread::spawn(move || {
-                let mut node = bootstrap(config);
-                while node.blockchain().len() < 2 {
-                    node.step();
+                let (mut node, mut network) = bootstrap(config);
+                loop {
+                    let timeout = node.step(&mut network);
+                    if node.blockchain().len() > 2 {
+                        break;
+                    }
+                    network.await_events(timeout);
                 }
             });
             node_handles.push(handle);
@@ -140,9 +144,13 @@ mod test {
             public_key,
             private_key,
         };
-        let mut node = bootstrap(config);
-        while node.blockchain().len() < 2 {
-            node.step();
+        let (mut node, mut network) = bootstrap(config);
+        loop {
+            let timeout = node.step(&mut network);
+            if node.blockchain().len() > 2 {
+                break;
+            }
+            network.await_events(timeout);
         }
         for handle in node_handles {
             handle.join().expect("node panicked");
