@@ -98,7 +98,7 @@ mod test {
 
     #[test]
     fn bootstrap_small_cluster() {
-        tracing_subscriber::fmt::init();
+        tracing_subscriber::fmt().with_test_writer().init();
 
         let bootstrap_addr = "127.0.0.1:13000".parse().unwrap();
         let listen_ip = "127.0.0.1".parse().unwrap();
