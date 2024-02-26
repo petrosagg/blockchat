@@ -1,20 +1,23 @@
 //! The definition of all cryptographic primitives used in BlockChat.
 
 use std::fmt;
+use std::str::FromStr;
 
-use base64::{display::Base64Display, engine::general_purpose::STANDARD_NO_PAD};
 use rsa::pkcs1v15::{Signature, SigningKey, VerifyingKey};
 use rsa::sha2::{Digest, Sha256};
 use rsa::signature::SignatureEncoding;
 use rsa::signature::{Signer, Verifier};
 use rsa::{RsaPrivateKey, RsaPublicKey};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
+use serde_with::{DeserializeFromStr, SerializeDisplay};
 
 use crate::error::{Error, Result};
 
 pub const KEY_SIZE: usize = 2048;
 
-#[derive(Default, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(
+    Default, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, DeserializeFromStr, SerializeDisplay,
+)]
 pub struct Hash([u8; 32]);
 
 impl Hash {
@@ -24,27 +27,22 @@ impl Hash {
     }
 }
 
-impl fmt::Debug for Hash {
+impl fmt::Display for Hash {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", hex::encode(self.0))
     }
 }
 
-impl Serialize for Hash {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        hex::encode(self.0).serialize(serializer)
+impl fmt::Debug for Hash {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self, f)
     }
 }
 
-impl<'de> Deserialize<'de> for Hash {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let s = <&str>::deserialize(deserializer)?;
+impl FromStr for Hash {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         // TODO: error handling
         let hash = hex::decode(s).unwrap().try_into().unwrap();
         Ok(Hash(hash))
@@ -65,7 +63,7 @@ impl PublicKey {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, SerializeDisplay, DeserializeFromStr)]
 pub struct Address(Hash);
 
 impl Address {
@@ -75,6 +73,28 @@ impl Address {
 
     pub fn invalid() -> Self {
         Address(Hash::default())
+    }
+}
+
+impl fmt::Display for Address {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", base_62::base62::encode(&self.0 .0))
+    }
+}
+
+impl fmt::Debug for Address {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self, f)
+    }
+}
+
+impl FromStr for Address {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        // TODO: error handling
+        let hash = base_62::base62::decode(s).unwrap().try_into().unwrap();
+        Ok(Address(Hash(hash)))
     }
 }
 
