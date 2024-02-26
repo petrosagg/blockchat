@@ -1,12 +1,21 @@
-use std::net::{IpAddr, SocketAddr};
+use std::{
+    net::{IpAddr, SocketAddr},
+    sync::{Arc, Mutex},
+};
 
-use blockchat::network::Network;
+use axum::{extract::State, routing::get, Json, Router};
+use clap::Parser;
+use tokio::net::TcpListener;
+
 use blockchat::{
     bootstrap::{self, BootstrapConfig},
     crypto,
 };
-use clap::Parser;
-use log::LevelFilter;
+use blockchat::{
+    crypto::Signed,
+    network::Network,
+    node::{Block, Node},
+};
 
 /// A node for the BlockChat blockchain network.
 #[derive(Parser, Debug)]
@@ -30,10 +39,9 @@ struct Args {
     block_capacity: usize,
 }
 
-fn main() -> std::io::Result<()> {
-    pretty_env_logger::formatted_builder()
-        .filter_level(LevelFilter::Info)
-        .init();
+#[tokio::main]
+async fn main() {
+    tracing_subscriber::fmt::init();
 
     let args = Args::parse();
 
@@ -48,10 +56,29 @@ fn main() -> std::io::Result<()> {
         private_key,
     };
 
-    let (mut node, mut network) = bootstrap::bootstrap(config);
+    let (node, mut network) = bootstrap::bootstrap(config);
 
-    loop {
-        let timeout = node.step(&mut network);
+    let shared_node = Arc::new(Mutex::new(node));
+    // Start a thread that will run the node
+    let node = Arc::clone(&shared_node);
+    std::thread::spawn(move || loop {
+        let timeout = { node.lock().unwrap().step(&mut network) };
         network.await_events(timeout);
-    }
+    });
+
+    let app = Router::new()
+        .route("/block", get(get_block))
+        .with_state(shared_node);
+
+    let listener = TcpListener::bind((args.listen_ip, 0)).await.unwrap();
+
+    log::info!(
+        "Node HTTP API listening on {}",
+        listener.local_addr().unwrap()
+    );
+    axum::serve(listener, app).await.unwrap();
+}
+
+async fn get_block(State(node): State<Arc<Mutex<Node>>>) -> Json<Signed<Block>> {
+    Json(node.lock().unwrap().blockchain().last().cloned().unwrap())
 }
