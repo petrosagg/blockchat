@@ -98,9 +98,9 @@ mod test {
 
     #[test]
     fn bootstrap_small_cluster() {
-        pretty_env_logger::init();
+        tracing_subscriber::fmt::init();
 
-        let bootstrap_addr = "127.0.0.1:7000".parse().unwrap();
+        let bootstrap_addr = "127.0.0.1:13000".parse().unwrap();
         let listen_ip = "127.0.0.1".parse().unwrap();
 
         const PEERS: usize = 5;
