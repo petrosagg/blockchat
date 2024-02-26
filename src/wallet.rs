@@ -1,14 +1,14 @@
 use serde::{Deserialize, Serialize};
 
-use crate::crypto::{self, PrivateKey, PublicKey, Signed};
+use crate::crypto::{Address, PublicKey, Signed};
 use crate::error::{Error, Result};
 
 const FEE_PERCENT: u64 = 3;
 
 #[derive(Clone, Debug)]
 pub struct Wallet {
-    /// The public key of this wallet.
-    pub public_key: PublicKey,
+    /// The address of this wallet.
+    pub address: Address,
     /// The current BCC balance of the wallet.
     balance: u64,
     /// The currently staked amount.
@@ -18,18 +18,17 @@ pub struct Wallet {
 }
 
 impl Wallet {
-    pub fn generate() -> (Self, PrivateKey) {
-        let (private_key, public_key) = crypto::generate_keypair();
-        (Self::with_public_key(public_key), private_key)
-    }
-
-    pub fn with_public_key(public_key: PublicKey) -> Self {
+    pub fn from_address(address: Address) -> Self {
         Self {
-            public_key,
+            address,
             balance: 0,
             stake: 0,
             nonce: 0,
         }
+    }
+
+    pub fn from_public_key(public_key: &PublicKey) -> Self {
+        Self::from_address(Address::from_public_key(public_key))
     }
 
     /// The amount of BCC available to use for transactions.
@@ -44,7 +43,7 @@ impl Wallet {
 
     fn create_tx(&mut self, kind: TransactionKind) -> Transaction {
         Transaction {
-            sender_address: self.public_key.clone(),
+            sender_address: self.address.clone(),
             kind,
             nonce: self.nonce,
         }
@@ -52,10 +51,9 @@ impl Wallet {
 
     /// Validates the provided transaction given the current wallet's state.
     pub fn validate_tx(&mut self, tx: Signed<Transaction>) -> Result<Signed<Transaction>> {
-        let signer = tx.data.sender_address.clone();
-        let tx = signer.verify(tx)?;
+        tx.verify()?;
         // If this is our transaction we must also verify that we have sufficient funds.
-        if tx.data.sender_address == self.public_key {
+        if tx.data.sender_address == self.address {
             if tx.data.nonce < self.nonce {
                 return Err(Error::NonceReused(tx.data.nonce, self.nonce));
             }
@@ -87,7 +85,7 @@ impl Wallet {
     pub fn apply_tx(&mut self, tx: Signed<Transaction>) -> Result<()> {
         let tx = self.validate_tx(tx)?.data;
         // If this is our transaction we must subtract the money moved and fees from our balance.
-        if tx.sender_address == self.public_key {
+        if tx.sender_address == self.address {
             self.nonce = tx.nonce + 1;
             self.balance -= tx.fees();
             match tx.kind {
@@ -98,18 +96,18 @@ impl Wallet {
         }
         // Finally, if this transaction moves money into this wallet we must add it to our balance.
         if let TransactionKind::Coin(amount, receiver) = tx.kind {
-            if receiver == self.public_key {
+            if receiver == self.address {
                 self.balance += amount;
             }
         }
         Ok(())
     }
 
-    pub fn create_coin_tx(&mut self, receiver: PublicKey, amount: u64) -> Transaction {
+    pub fn create_coin_tx(&mut self, receiver: Address, amount: u64) -> Transaction {
         self.create_tx(TransactionKind::Coin(amount, receiver))
     }
 
-    pub fn create_message_tx(&mut self, receiver: PublicKey, message: String) -> Transaction {
+    pub fn create_message_tx(&mut self, receiver: Address, message: String) -> Transaction {
         self.create_tx(TransactionKind::Message(message, receiver))
     }
 
@@ -130,7 +128,7 @@ impl Wallet {
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Transaction {
     /// The public key of the sending wallet.
-    pub sender_address: PublicKey,
+    pub sender_address: Address,
     /// The kind of this transaction.
     pub kind: TransactionKind,
     /// The alice_key nonce.
@@ -140,9 +138,9 @@ pub struct Transaction {
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum TransactionKind {
     /// A coin transaction transferring the specified amount to the receiver.
-    Coin(u64, PublicKey),
+    Coin(u64, Address),
     /// A message transaction transferring the specified message to the receiver.
-    Message(String, PublicKey),
+    Message(String, Address),
     // A staking transaction locking up the specified amount.
     Stake(u64),
 }
@@ -158,7 +156,7 @@ impl Transaction {
         }
     }
 
-    pub fn receiver(&self) -> Option<PublicKey> {
+    pub fn receiver(&self) -> Option<Address> {
         match &self.kind {
             TransactionKind::Coin(_, receiver) | TransactionKind::Message(_, receiver) => {
                 Some(receiver.clone())
@@ -170,41 +168,44 @@ impl Transaction {
 
 #[cfg(test)]
 pub mod test {
+    use crate::crypto::PrivateKey;
+
     use super::*;
 
     /// Creates a test wallet with 1M BCC as initial funds
-    pub fn setup_test_wallet(initial_balance: u64) -> (Wallet, PrivateKey) {
-        let (mut wallet, wallet_key) = Wallet::generate();
+    pub fn setup_test_wallet(initial_balance: u64) -> (Wallet, PublicKey, PrivateKey) {
+        let (wallet_key, wallet_public_key) = crate::crypto::generate_keypair();
+        let mut wallet = Wallet::from_public_key(&wallet_public_key);
         // Create Alice's keypair and give some initial funds to the test wallet
         let (funder_key, funder_public_key) = crate::crypto::generate_keypair();
         let initial_funds = Transaction {
-            sender_address: funder_public_key,
-            kind: TransactionKind::Coin(initial_balance, wallet.public_key.clone()),
+            sender_address: Address::from_public_key(&funder_public_key),
+            kind: TransactionKind::Coin(initial_balance, wallet.address.clone()),
             nonce: 0,
         };
         wallet.apply_tx(funder_key.sign(initial_funds)).unwrap();
-        (wallet, wallet_key)
+        (wallet, wallet_public_key, wallet_key)
     }
 
-    pub fn setup_default_test_wallet() -> (Wallet, PrivateKey) {
+    pub fn setup_default_test_wallet() -> (Wallet, PublicKey, PrivateKey) {
         setup_test_wallet(1_000_000)
     }
 
     #[test]
     fn test_coin_transaction() {
-        let (mut sender_wallet, sender_key) = setup_default_test_wallet();
-        let (mut receiver_wallet, _receiver_key) = setup_default_test_wallet();
+        let (mut sender_wallet, _, sender_key) = setup_default_test_wallet();
+        let (mut receiver_wallet, _, _receiver_key) = setup_default_test_wallet();
 
         let coin_amount = 100;
-        let tx = sender_wallet.create_coin_tx(receiver_wallet.public_key.clone(), coin_amount);
+        let tx = sender_wallet.create_coin_tx(receiver_wallet.address.clone(), coin_amount);
         let signed_tx = sender_key.sign(tx.clone());
 
         // First validate that the tx is well formed
         assert_eq!(
             tx,
             Transaction {
-                sender_address: sender_wallet.public_key.clone(),
-                kind: TransactionKind::Coin(coin_amount, receiver_wallet.public_key.clone()),
+                sender_address: sender_wallet.address.clone(),
+                kind: TransactionKind::Coin(coin_amount, receiver_wallet.address.clone()),
                 nonce: 0,
             }
         );
@@ -223,21 +224,20 @@ pub mod test {
 
     #[test]
     fn test_message_transaction() {
-        let (mut sender_wallet, sender_key) = setup_default_test_wallet();
-        let (mut receiver_wallet, _receiver_key) = setup_default_test_wallet();
+        let (mut sender_wallet, _, sender_key) = setup_default_test_wallet();
+        let (mut receiver_wallet, _, _receiver_key) = setup_default_test_wallet();
 
         let message = String::from("Hello World!");
         let expected_fees = message.len() as u64;
-        let tx =
-            sender_wallet.create_message_tx(receiver_wallet.public_key.clone(), message.clone());
+        let tx = sender_wallet.create_message_tx(receiver_wallet.address.clone(), message.clone());
         let signed_tx = sender_key.sign(tx.clone());
 
         // First validate that the tx is well formed
         assert_eq!(
             tx,
             Transaction {
-                sender_address: sender_wallet.public_key.clone(),
-                kind: TransactionKind::Message(message, receiver_wallet.public_key.clone()),
+                sender_address: sender_wallet.address.clone(),
+                kind: TransactionKind::Message(message, receiver_wallet.address.clone()),
                 nonce: 0,
             }
         );
@@ -256,7 +256,7 @@ pub mod test {
 
     #[test]
     fn test_stake_transaction() {
-        let (mut sender_wallet, sender_key) = setup_default_test_wallet();
+        let (mut sender_wallet, _, sender_key) = setup_default_test_wallet();
 
         let stake_amount = 100;
         let tx = sender_wallet.create_stake_tx(stake_amount);
@@ -266,7 +266,7 @@ pub mod test {
         assert_eq!(
             tx,
             Transaction {
-                sender_address: sender_wallet.public_key.clone(),
+                sender_address: sender_wallet.address.clone(),
                 kind: TransactionKind::Stake(stake_amount),
                 nonce: 0,
             }
@@ -282,12 +282,12 @@ pub mod test {
 
     #[test]
     fn test_coin_insufficient_funds() {
-        let (mut sender_wallet, sender_key) = setup_default_test_wallet();
-        let (receiver_wallet, _receiver_key) = setup_default_test_wallet();
+        let (mut sender_wallet, _, sender_key) = setup_default_test_wallet();
+        let (receiver_wallet, _, _receiver_key) = setup_default_test_wallet();
 
         // Beware of ceil.
         let coin_amount = 970_875;
-        let tx = sender_wallet.create_coin_tx(receiver_wallet.public_key.clone(), coin_amount);
+        let tx = sender_wallet.create_coin_tx(receiver_wallet.address.clone(), coin_amount);
         let signed_tx = sender_key.sign(tx.clone());
 
         let result = sender_wallet.apply_tx(signed_tx.clone());
@@ -297,11 +297,11 @@ pub mod test {
 
     #[test]
     fn test_message_insufficient_funds() {
-        let (mut sender_wallet, sender_key) = setup_test_wallet(23);
-        let (receiver_wallet, _receiver_key) = setup_default_test_wallet();
+        let (mut sender_wallet, _, sender_key) = setup_test_wallet(23);
+        let (receiver_wallet, _, _receiver_key) = setup_default_test_wallet();
 
         let message = String::from("These are 24 characters.");
-        let tx = sender_wallet.create_message_tx(receiver_wallet.public_key.clone(), message);
+        let tx = sender_wallet.create_message_tx(receiver_wallet.address.clone(), message);
         let signed_tx = sender_key.sign(tx.clone());
 
         let result = sender_wallet.apply_tx(signed_tx.clone());
@@ -311,7 +311,7 @@ pub mod test {
 
     #[test]
     fn test_stake_insufficient_funds() {
-        let (mut sender_wallet, sender_key) = setup_default_test_wallet();
+        let (mut sender_wallet, _, sender_key) = setup_default_test_wallet();
 
         let stake_amount = 1_000_001;
         let tx = sender_wallet.create_stake_tx(stake_amount);

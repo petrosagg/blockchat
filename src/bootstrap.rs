@@ -7,7 +7,7 @@ use std::net::{IpAddr, SocketAddr, TcpListener};
 
 use serde::{Deserialize, Serialize};
 
-use crate::crypto::{PrivateKey, PublicKey};
+use crate::crypto::{Address, PrivateKey, PublicKey};
 use crate::network::broadcast::Broadcaster;
 use crate::network::discovery::{bootstrap_helper, discover_peers};
 use crate::network::Network;
@@ -74,14 +74,15 @@ pub fn bootstrap(config: BootstrapConfig) -> (Node, Broadcaster<Message>) {
     );
 
     if config.bootstrap_leader {
-        let mut genesis_wallet = Wallet::with_public_key(genesis_validator.clone());
+        let mut genesis_wallet = Wallet::from_public_key(&genesis_validator);
         genesis_wallet.add_funds(genesis_funds);
         for peer_info in peer_infos {
             // No need to seed the genesis wallet.
             if peer_info.public_key == genesis_validator {
                 continue;
             }
-            let tx = genesis_wallet.create_coin_tx(peer_info.public_key, 1000);
+            let tx = genesis_wallet
+                .create_coin_tx(Address::from_public_key(&peer_info.public_key), 1000);
             let signed_tx = config.private_key.sign(tx);
             network.send(&Message::Transaction(signed_tx));
         }

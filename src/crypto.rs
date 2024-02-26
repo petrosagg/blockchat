@@ -1,6 +1,5 @@
 //! The definition of all cryptographic primitives used in BlockChat.
 
-use std::cmp::Ordering;
 use std::fmt;
 
 use base64::{display::Base64Display, engine::general_purpose::STANDARD_NO_PAD};
@@ -9,13 +8,13 @@ use rsa::sha2::{Digest, Sha256};
 use rsa::signature::SignatureEncoding;
 use rsa::signature::{Signer, Verifier};
 use rsa::{RsaPrivateKey, RsaPublicKey};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::error::{Error, Result};
 
 pub const KEY_SIZE: usize = 2048;
 
-#[derive(Default, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
+#[derive(Default, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct Hash([u8; 32]);
 
 impl Hash {
@@ -31,27 +30,30 @@ impl fmt::Debug for Hash {
     }
 }
 
-#[derive(Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
+impl Serialize for Hash {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        hex::encode(self.0).serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for Hash {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = <&str>::deserialize(deserializer)?;
+        // TODO: error handling
+        let hash = hex::decode(s).unwrap().try_into().unwrap();
+        Ok(Hash(hash))
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct PublicKey {
     key: RsaPublicKey,
-    hash: Hash,
-}
-
-impl PartialOrd for PublicKey {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-impl Ord for PublicKey {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.hash.cmp(&other.hash)
-    }
-}
-
-impl fmt::Debug for PublicKey {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", Base64Display::new(&self.hash.0, &STANDARD_NO_PAD))
-    }
 }
 
 impl PublicKey {
@@ -59,19 +61,20 @@ impl PublicKey {
     pub fn invalid() -> Self {
         Self {
             key: RsaPublicKey::new_unchecked(0u64.into(), 0u64.into()),
-            hash: Default::default(),
         }
     }
+}
 
-    pub fn verify<T: Serialize>(&self, signature: Signed<T>) -> Result<Signed<T>> {
-        let verifying_key = VerifyingKey::<Sha256>::new(self.key.clone());
-        let hash = Hash::digest(&signature.data);
-        if hash != signature.hash {
-            return Err(Error::InvalidSignature(Default::default()));
-        }
-        let signature_decoded = Signature::try_from(&*signature.signature).unwrap();
-        verifying_key.verify(&hash.0, &signature_decoded)?;
-        Ok(signature)
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
+pub struct Address(Hash);
+
+impl Address {
+    pub fn from_public_key(key: &PublicKey) -> Self {
+        Self(Hash::digest(key))
+    }
+
+    pub fn invalid() -> Self {
+        Address(Hash::default())
     }
 }
 
@@ -85,6 +88,9 @@ impl PrivateKey {
 
         Signed {
             signature: signing_key.sign(&hash.0).to_vec(),
+            public_key: PublicKey {
+                key: RsaPublicKey::from(&self.0),
+            },
             hash,
             data,
         }
@@ -96,11 +102,7 @@ pub fn generate_keypair() -> (PrivateKey, PublicKey) {
 
     let private_key = RsaPrivateKey::new(&mut rng, KEY_SIZE).expect("failed to generate a key");
     let public_key = RsaPublicKey::from(&private_key);
-    let hash = Hash::digest(&public_key);
-    let public_key = PublicKey {
-        key: public_key,
-        hash,
-    };
+    let public_key = PublicKey { key: public_key };
 
     (PrivateKey(private_key), public_key)
 }
@@ -108,11 +110,13 @@ pub fn generate_keypair() -> (PrivateKey, PublicKey) {
 /// A container of signed data
 #[derive(Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Signed<T> {
-    /// A signature proving that the sender wallet created this transaction.
+    // The public key used for the signature of the hash of the data.
+    pub public_key: PublicKey,
+    /// The signature of the hash of the data.
     pub signature: Vec<u8>,
     /// The hash of the data.
     pub hash: Hash,
-    /// The data being signed,
+    /// The data.
     pub data: T,
 }
 
@@ -131,10 +135,22 @@ impl<T: Serialize + Clone> Signed<T> {
     /// the genesis block and for testing.
     pub fn new_invalid(data: T) -> Signed<T> {
         Signed {
+            public_key: PublicKey::invalid(),
             signature: vec![],
             hash: Hash::digest(data.clone()),
             data,
         }
+    }
+
+    pub fn verify(&self) -> Result<()> {
+        let verifying_key = VerifyingKey::<Sha256>::new(self.public_key.key.clone());
+        let hash = Hash::digest(&self.data);
+        if hash != self.hash {
+            return Err(Error::InvalidSignature(Default::default()));
+        }
+        let signature_decoded = Signature::try_from(&*self.signature).unwrap();
+        verifying_key.verify(&self.hash.0, &signature_decoded)?;
+        Ok(())
     }
 }
 
@@ -152,12 +168,10 @@ mod test {
 
     #[test]
     fn sign_verify_test() {
-        let (private_key, public_key) = generate_keypair();
-        let (_, other_public_key) = generate_keypair();
+        let (private_key, _) = generate_keypair();
         let data = b"Hello World!";
         let signature = private_key.sign(data);
 
-        assert!(public_key.verify(signature.clone()).is_ok());
-        assert!(other_public_key.verify(signature).is_err());
+        assert!(signature.verify().is_ok());
     }
 }

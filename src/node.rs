@@ -7,7 +7,7 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 
-use crate::crypto::{Hash, PrivateKey, PublicKey, Signed};
+use crate::crypto::{Address, Hash, PrivateKey, PublicKey, Signed};
 use crate::error::{Error, Result};
 use crate::network::Network;
 use crate::wallet::{Transaction, TransactionKind, Wallet};
@@ -20,16 +20,18 @@ pub struct Node {
     /// The maximum number of transactions contained in each block.
     capacity: usize,
     /// The set of signed but not necessarily valid transactions waiting to be included in a block.
-    pending_transactions: BTreeMap<(PublicKey, u64), Signed<Transaction>>,
+    pending_transactions: BTreeMap<(Address, u64), Signed<Transaction>>,
     /// The current blockchain.
     blockchain: Vec<Signed<Block>>,
+    /// The public key of the wallet of this node.
+    address: Address,
     /// The public key of the wallet of this node.
     public_key: PublicKey,
     /// The private key of the wallet of this node.
     private_key: PrivateKey,
     /// The state of each known wallet indexed by public key. We use a BTreeMap to always maintain
     /// the wallets in sorted public key order which helps perform the validator election.
-    wallets: BTreeMap<PublicKey, Wallet>,
+    wallets: BTreeMap<Address, Wallet>,
 }
 
 impl fmt::Debug for Node {
@@ -54,29 +56,31 @@ impl Node {
         genesis_funds: u64,
         capacity: usize,
     ) -> Self {
+        let validator_address = Address::from_public_key(&genesis_validator);
         let genesis_tx = Transaction {
-            sender_address: PublicKey::invalid(),
-            kind: TransactionKind::Coin(genesis_funds, genesis_validator.clone()),
+            sender_address: Address::invalid(),
+            kind: TransactionKind::Coin(genesis_funds, validator_address.clone()),
             nonce: 0,
         };
 
         let genesis_block = Block {
             timestamp: DateTime::<Utc>::MIN_UTC,
             transactions: vec![Signed::new_invalid(genesis_tx)],
-            validator: PublicKey::invalid(),
+            validator: Address::invalid(),
             parent_hash: Hash::default(),
         };
 
         let mut wallets = BTreeMap::new();
-        let mut genesis_wallet = Wallet::with_public_key(genesis_validator.clone());
+        let mut genesis_wallet = Wallet::from_public_key(&genesis_validator);
         genesis_wallet.add_funds(genesis_funds);
         genesis_wallet.set_stake(1);
-        wallets.insert(genesis_validator, genesis_wallet);
+        wallets.insert(validator_address, genesis_wallet);
 
         Self {
             name,
             capacity,
             pending_transactions: BTreeMap::new(),
+            address: Address::from_public_key(&public_key),
             public_key,
             private_key,
             blockchain: vec![Signed::new_invalid(genesis_block)],
@@ -84,7 +88,7 @@ impl Node {
         }
     }
 
-    fn next_validator(&self) -> PublicKey {
+    fn next_validator(&self) -> Address {
         // TODO: use the hash of the last block
         let mut rng = StdRng::seed_from_u64(self.blockchain.len() as u64);
         // Construct the ballot from the current set of
@@ -96,7 +100,7 @@ impl Node {
             .values()
             .find_map(|wallet| {
                 if wallet.staked_amount() > winner {
-                    Some(wallet.public_key.clone())
+                    Some(wallet.address.clone())
                 } else {
                     winner -= wallet.staked_amount();
                     None
@@ -112,7 +116,7 @@ impl Node {
     /// Adds a transaction in the set of pending transactions
     pub fn handle_transaction(&mut self, tx: Signed<Transaction>) -> Result<()> {
         let signer = tx.data.sender_address.clone();
-        let tx = signer.verify(tx)?;
+        tx.verify()?;
         self.pending_transactions
             .insert((signer, tx.data.nonce), tx);
         // 2. Validate that there is enough balance
@@ -128,12 +132,12 @@ impl Node {
             block.data.transactions.len()
         );
         // The block must be correctly signed
-        let validator = block.data.validator.clone();
-        let block = validator.verify(block)?;
+        block.verify()?;
 
         // TODO: Keep out-of-order blocks as pending.
 
         // The signer must be the expected next validator
+        let validator = block.data.validator.clone();
         if validator != self.next_validator() {
             return Err(Error::InvalidBlockValidator);
         }
@@ -144,7 +148,7 @@ impl Node {
             let sender = tx.data.sender_address.clone();
             let sender_wallet = new_wallets
                 .entry(sender.clone())
-                .or_insert_with(|| Wallet::with_public_key(sender));
+                .or_insert_with(|| Wallet::from_address(sender.clone()));
 
             sender_wallet.apply_tx(tx.clone())?;
 
@@ -152,7 +156,7 @@ impl Node {
                 TransactionKind::Coin(_, receiver) | TransactionKind::Message(_, receiver) => {
                     let receiver_wallet = new_wallets
                         .entry(receiver.clone())
-                        .or_insert_with(|| Wallet::with_public_key(receiver.clone()));
+                        .or_insert_with(|| Wallet::from_address(receiver.clone()));
 
                     receiver_wallet.apply_tx(tx.clone())?;
                 }
@@ -164,7 +168,7 @@ impl Node {
 
         let validator_wallet = new_wallets
             .entry(validator.clone())
-            .or_insert_with(|| Wallet::with_public_key(validator));
+            .or_insert_with(|| Wallet::from_address(validator.clone()));
         validator_wallet.add_funds(total_fees);
 
         for tx in block.data.transactions.iter() {
@@ -190,7 +194,7 @@ impl Node {
             let sender = tx.data.sender_address.clone();
             let sender_wallet = tmp_wallets
                 .entry(sender.clone())
-                .or_insert_with(|| Wallet::with_public_key(sender.clone()));
+                .or_insert_with(|| Wallet::from_address(sender.clone()));
 
             match sender_wallet.apply_tx(tx.clone()) {
                 Err(Error::NonceReused(_, _)) => continue,
@@ -202,7 +206,7 @@ impl Node {
                     Some(receiver) => {
                         let receiver_wallet = tmp_wallets
                             .entry(receiver.clone())
-                            .or_insert_with(|| Wallet::with_public_key(receiver.clone()));
+                            .or_insert_with(|| Wallet::from_address(receiver.clone()));
 
                         if sender != receiver {
                             match receiver_wallet.apply_tx(tx.clone()) {
@@ -226,7 +230,7 @@ impl Node {
         let new_block = Block {
             timestamp: Utc::now(),
             transactions,
-            validator: self.public_key.clone(),
+            validator: Address::from_public_key(&self.public_key),
             parent_hash: self.blockchain.last().unwrap().hash.clone(),
         };
 
@@ -248,7 +252,7 @@ impl Node {
             }
         }
 
-        if self.public_key == self.next_validator() {
+        if self.address == self.next_validator() {
             let last_block_ts = self.blockchain().last().unwrap().data.timestamp;
             let next_block_ts = last_block_ts + MINT_INTERVAL;
             if Utc::now() > next_block_ts {
@@ -257,7 +261,7 @@ impl Node {
                 self.handle_block(block.clone())
                     .expect("minted block was invalid");
                 network.send(&Message::Block(block));
-                if self.public_key == self.next_validator() {
+                if self.address == self.next_validator() {
                     Some(MINT_INTERVAL)
                 } else {
                     None
@@ -284,14 +288,14 @@ pub struct Block {
     /// The list of transactions contained in this block.
     transactions: Vec<Signed<Transaction>>,
     /// The public key of the node that minted this block.
-    validator: PublicKey,
+    validator: Address,
     /// The hash of the parent block.
     parent_hash: Hash,
 }
 
 #[cfg(test)]
 mod test {
-    use crate::network::TestNetwork;
+    use crate::{crypto, network::TestNetwork};
 
     use super::*;
 
@@ -299,25 +303,26 @@ mod test {
     fn basic_test() {
         let (mut network1, mut network2) = TestNetwork::new();
 
-        let (node_wallet, node_private_key) = Wallet::generate();
+        let (node_private_key, node_public_key) = crypto::generate_keypair();
         let mut node = Node::new(
             "test_node".into(),
-            node_wallet.public_key.clone(),
+            node_public_key.clone(),
             node_private_key,
-            node_wallet.public_key,
+            node_public_key,
             1_000_000,
             5,
         );
 
         // Now create a transaction from a wallet that is not tracked and send it to the node
-        let (mut user_wallet, user_key) = Wallet::generate();
-        let tx = user_wallet.create_coin_tx(node.public_key.clone(), 42);
+        let (user_key, user_public_key) = crypto::generate_keypair();
+        let mut user_wallet = Wallet::from_public_key(&user_public_key);
+        let tx = user_wallet.create_coin_tx(Address::from_public_key(&node.public_key), 42);
         network2.send(&Message::Transaction(user_key.sign(tx)));
         node.step(&mut network1);
         assert_eq!(node.pending_transactions.len(), 1);
 
         // Now create an invalid transaction and check that it's ignored
-        let tx = user_wallet.create_coin_tx(node.public_key.clone(), 42);
+        let tx = user_wallet.create_coin_tx(Address::from_public_key(&node.public_key), 42);
         let invalid_tx = Signed::new_invalid(tx);
         network2.send(&Message::Transaction(invalid_tx));
         node.step(&mut network1);
@@ -326,14 +331,15 @@ mod test {
 
     #[test]
     fn test_mint_block() {
-        let (mut node_wallet, node_private_key) = crate::wallet::test::setup_default_test_wallet();
-        let (receiver_wallet, _) = crate::wallet::test::setup_default_test_wallet();
+        let (mut node_wallet, node_public_key, node_private_key) =
+            crate::wallet::test::setup_default_test_wallet();
+        let (receiver_wallet, _, _) = crate::wallet::test::setup_default_test_wallet();
 
         let mut node = Node::new(
             "test_node".into(),
-            node_wallet.public_key.clone(),
+            node_public_key.clone(),
             node_private_key.clone(),
-            node_wallet.public_key.clone(),
+            node_public_key.clone(),
             1_000_000,
             5,
         );
@@ -346,7 +352,7 @@ mod test {
         for _ in 0..TRANSACTION_COUNT {
             let tx = node_wallet
                 .clone()
-                .create_coin_tx(receiver_wallet.clone().public_key, coin_amount);
+                .create_coin_tx(receiver_wallet.address.clone(), coin_amount);
             let signed_tx = node_private_key.sign(tx.clone());
 
             node_wallet.apply_tx(signed_tx.clone()).unwrap();
@@ -360,7 +366,7 @@ mod test {
         let block = node.mint_block();
         assert_eq!(block.data.transactions.len(), 5);
         assert_eq!(block.data.transactions, transactions);
-        assert_eq!(block.data.validator, node_wallet.public_key);
+        assert_eq!(block.data.validator, node_wallet.address);
         assert_eq!(block.data.parent_hash, node.blockchain[0].hash);
     }
 }
