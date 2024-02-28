@@ -1,9 +1,25 @@
+use clap::Parser;
+use reqwest::Url;
 use rustyline::error::ReadlineError;
 use rustyline::{DefaultEditor, Result};
 
+use blockchat::cli::client::Client;
 use blockchat::cli::command::Command;
 
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// The URL of the RPC node.
+    #[arg(long)]
+    rpc_url: Url,
+}
+
 fn main() -> Result<()> {
+    let args = Args::parse();
+
+    println!("Using RPC at {}", args.rpc_url);
+    let client = Client::new(args.rpc_url);
+
     let mut rl = DefaultEditor::new()?;
     loop {
         let readline = rl.readline("blockchat> ");
@@ -11,7 +27,10 @@ fn main() -> Result<()> {
             Ok(line) => {
                 rl.add_history_entry(line.as_str()).unwrap();
                 match line.parse::<Command>() {
-                    Ok(cmd) => println!("Recognized command: {cmd:?}"),
+                    Ok(cmd) => {
+                        println!("Recognized command: {cmd:?}");
+                        cmd.run();
+                    }
                     Err(err) => println!("Error: {err:?}"),
                 }
             }
