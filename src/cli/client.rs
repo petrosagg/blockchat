@@ -52,18 +52,36 @@ impl BlockchatClient {
         Ok(last_block)
     }
 
-    pub fn send_transaction(&self, recipient: Address, amount: u64) -> Result<(Address, u64), Err> {
-        // TODO: Call API to send coin transaction
-        todo!();
+    pub async fn send_transaction(
+        &self,
+        recipient: Address,
+        amount: u64,
+    ) -> Result<Signed<Transaction>, Err> {
+        let url = self.rpc_url.join("transaction").unwrap();
+        let request = self
+            .client
+            .post(url)
+            .json(&CreateTransactionRequest::Coin { recipient, amount });
+        let response = request.send().await.unwrap();
+        let tx = response.json().await.unwrap();
+
+        Ok(tx)
     }
 
-    pub fn send_message(
+    pub async fn send_message(
         &self,
         recipient: Address,
         message: String,
-    ) -> Result<(Address, String), Err> {
-        // TODO: Call API to send message transaction
-        todo!();
+    ) -> Result<Signed<Transaction>, Err> {
+        let url = self.rpc_url.join("transaction").unwrap();
+        let request = self
+            .client
+            .post(url)
+            .json(&CreateTransactionRequest::Message { recipient, message });
+        let response = request.send().await.unwrap();
+        let tx = response.json().await.unwrap();
+
+        Ok(tx)
     }
 
     pub async fn stake(&self, amount: u64) -> Result<Signed<Transaction>, Err> {

@@ -36,8 +36,8 @@ impl FromStr for Command {
 impl Command {
     pub async fn run(&self, client: BlockchatClient) {
         match self {
-            Command::NewTransaction(tx) => todo!(),
-            Command::NewMessage(tx) => todo!(),
+            Command::NewTransaction(tx) => tx.run(client).await,
+            Command::NewMessage(tx) => tx.run(client).await,
             Command::Stake(tx) => tx.run(client).await,
             Command::ViewLastBlockCommand => Command::get_last_block(client).await,
             Command::ShowBalanceCommand => Command::get_balance(client).await,
@@ -71,6 +71,16 @@ pub struct NewTransactionCommand {
     pub amount: u64,
 }
 
+impl NewTransactionCommand {
+    pub async fn run(&self, client: BlockchatClient) {
+        let tx = client
+            .send_transaction(self.recipient.clone(), self.amount)
+            .await
+            .unwrap();
+        println!("{:#?}", tx);
+    }
+}
+
 impl FromStr for NewTransactionCommand {
     type Err = String;
 
@@ -99,6 +109,16 @@ impl FromStr for NewTransactionCommand {
 pub struct NewMessageCommand {
     pub recipient: Address,
     pub message: String,
+}
+
+impl NewMessageCommand {
+    pub async fn run(&self, client: BlockchatClient) {
+        let tx = client
+            .send_message(self.recipient.clone(), self.message.clone())
+            .await
+            .unwrap();
+        println!("{:#?}", tx);
+    }
 }
 
 impl FromStr for NewMessageCommand {
