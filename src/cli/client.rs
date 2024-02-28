@@ -1,24 +1,44 @@
-use reqwest::Url;
+use reqwest::{Url, Client};
 
-use crate::crypto::Address;
+use crate::{crypto::{Address, Signed}, node::Block, wallet::Wallet};
 
-pub struct Client {
+#[derive(Clone)]
+pub struct BlockchatClient {
     rpc_url: Url,
+    client:  Client
 }
 
 type Err = String;
 
-impl Client {
+impl BlockchatClient {
     pub fn new(rpc_url: Url) -> Self {
-        Client { rpc_url }
+        BlockchatClient {
+          rpc_url,
+          client: Client::new()
+        }
     }
-    // TODO: Make recipient Address type
+
+    pub async fn get_balance(&self) -> Result<Wallet, Err> {
+        let request = self.client.get(self.rpc_url.join("balance").unwrap());
+        let response = request.send().await.unwrap();
+        let wallet = response.json::<Wallet>().await.unwrap();
+
+        Ok(wallet)
+    }
+
+    pub async fn get_last_block(&self) -> Result<Signed<Block>, Err> {
+        let request = self.client.get(self.rpc_url.join("block").unwrap());
+        let response = request.send().await.unwrap();
+        let last_block = response.json::<Signed<Block>>().await.unwrap();
+
+        Ok(last_block)
+    }
+
     pub fn send_transaction(&self, recipient: Address, amount: u64) -> Result<(Address, u64), Err> {
         // TODO: Call API to send coin transaction
         todo!();
     }
 
-    // TODO: Make recipient Address type
     pub fn send_message(
         &self,
         recipient: Address,

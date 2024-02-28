@@ -3,7 +3,7 @@ use reqwest::Url;
 use rustyline::error::ReadlineError;
 use rustyline::{DefaultEditor, Result};
 
-use blockchat::cli::client::Client;
+use blockchat::cli::client::BlockchatClient;
 use blockchat::cli::command::Command;
 
 #[derive(Parser, Debug)]
@@ -14,11 +14,12 @@ struct Args {
     rpc_url: Url,
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     let args = Args::parse();
 
     println!("Using RPC at {}", args.rpc_url);
-    let client = Client::new(args.rpc_url);
+    let client = BlockchatClient::new(args.rpc_url);
 
     let mut rl = DefaultEditor::new()?;
     loop {
@@ -28,8 +29,7 @@ fn main() -> Result<()> {
                 rl.add_history_entry(line.as_str()).unwrap();
                 match line.parse::<Command>() {
                     Ok(cmd) => {
-                        println!("Recognized command: {cmd:?}");
-                        cmd.run();
+                        cmd.run(client.clone()).await;
                     }
                     Err(err) => println!("Error: {err:?}"),
                 }

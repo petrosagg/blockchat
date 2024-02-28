@@ -4,6 +4,8 @@ use std::str::FromStr;
 
 use crate::crypto::Address;
 
+use super::client::BlockchatClient;
+
 #[derive(Debug)]
 pub enum Command {
     NewTransaction(NewTransactionCommand),
@@ -32,15 +34,34 @@ impl FromStr for Command {
 }
 
 impl Command {
-    pub fn run(&self) {
+    pub async fn run(&self, client: BlockchatClient) {
         match self {
             Command::NewTransaction(tx) => todo!(),
             Command::NewMessage(tx) => todo!(),
             Command::Stake(tx) => todo!(),
-            Command::ViewLastBlockCommand => todo!(),
-            Command::ShowBalanceCommand => todo!(),
-            Command::HelpCommand => todo!(),
+            Command::ViewLastBlockCommand => Command::get_last_block(client).await,
+            Command::ShowBalanceCommand => Command::get_balance(client).await,
+            Command::HelpCommand => Command::help(),
         }
+    }
+
+    async fn get_balance(client: BlockchatClient) {
+        let wallet = client.get_balance().await.unwrap();
+        println!("{:#?}", wallet);
+    }
+
+    async fn get_last_block(client: BlockchatClient) {
+        let last_block = client.get_last_block().await.unwrap();
+        println!("{:#?}", last_block);
+    }
+
+    fn help() {
+        println!("  t <recipient_address> <amount> - Send an <amount> BTC to <recipient_address>");
+        println!("  t <recipient_address> <message> - Send a message to <recipient_address>");
+        println!("  stake <amount> - Stake an <amount> of BTC");
+        println!("  help - Display the help documentation");
+        println!("  view - View last block");
+        println!("  balance - Show balance");
     }
 }
 
