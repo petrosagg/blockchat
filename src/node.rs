@@ -224,7 +224,10 @@ impl Node {
                 .or_insert_with(|| Wallet::from_address(sender.clone()));
 
             match sender_wallet.apply_tx(tx.clone()) {
-                Err(Error::NonceReused(_, _)) => continue,
+                Err(err @ Error::NonceReused(_, _)) => {
+                    log::trace!("{}: dropping invalid tx {:?}: {err}", self.name, tx.hash);
+                    continue;
+                }
                 Err(_) => {
                     self.pending_transactions.insert(key, tx);
                     continue;
@@ -272,7 +275,7 @@ impl Node {
 
     /// Broadcasts a transaction to the network
     pub fn broadcast_transaction(&mut self, tx: Signed<Transaction>) {
-        log::trace!("{}: broadcasting tx {:?}", self.name, tx.data);
+        log::trace!("{}: broadcasting tx {:?}: {:?}", self.name, tx.hash, tx.data);
         if let Err(err) = self.handle_transaction(tx.clone()) {
             log::warn!("{}: broadcasting invalid transaction {err}", self.name);
         }
