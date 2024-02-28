@@ -58,10 +58,15 @@ impl Node {
         genesis_funds: u64,
         capacity: usize,
     ) -> Self {
-        let validator_address = Address::from_public_key(&genesis_validator);
+        let mut wallets = BTreeMap::new();
+        let node_address = Address::from_public_key(&public_key);
+        let node_wallet = Wallet::from_address(node_address.clone());
+        wallets.insert(node_address, node_wallet);
+
+        let genesis_address = Address::from_public_key(&genesis_validator);
         let genesis_tx = Transaction {
             sender_address: Address::invalid(),
-            kind: TransactionKind::Coin(genesis_funds, validator_address.clone()),
+            kind: TransactionKind::Coin(genesis_funds, genesis_address.clone()),
             nonce: 0,
         };
 
@@ -72,11 +77,11 @@ impl Node {
             parent_hash: Hash::default(),
         };
 
-        let mut wallets = BTreeMap::new();
-        let mut genesis_wallet = Wallet::from_public_key(&genesis_validator);
+        let genesis_wallet = wallets
+            .entry(genesis_address.clone())
+            .or_insert_with(|| Wallet::from_address(genesis_address));
         genesis_wallet.add_funds(genesis_funds);
         genesis_wallet.set_stake(1);
-        wallets.insert(validator_address, genesis_wallet);
 
         Self {
             name,
@@ -353,7 +358,7 @@ mod test {
 
         // Now create a transaction from a wallet that is not tracked and send it to the node
         let (user_key, user_public_key) = crypto::generate_keypair();
-        let mut user_wallet = Wallet::from_public_key(&user_public_key);
+        let user_wallet = Wallet::from_public_key(&user_public_key);
         let tx = user_wallet.create_coin_tx(Address::from_public_key(&node.public_key), 42);
         network2.send(&Message::Transaction(user_key.sign(tx)));
         node.step(&mut network1);
