@@ -12,7 +12,7 @@ use crate::error::{Error, Result};
 use crate::network::Network;
 use crate::wallet::{Transaction, TransactionKind, Wallet};
 
-const MINT_INTERVAL: Duration = Duration::from_secs(1);
+const MINT_INTERVAL: Duration = Duration::from_secs(10);
 
 pub struct Node {
     // The name of this node. Used for logging

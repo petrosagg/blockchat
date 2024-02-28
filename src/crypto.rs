@@ -7,9 +7,11 @@ use rsa::pkcs1v15::{Signature, SigningKey, VerifyingKey};
 use rsa::sha2::{Digest, Sha256};
 use rsa::signature::SignatureEncoding;
 use rsa::signature::{Signer, Verifier};
-use rsa::{RsaPrivateKey, RsaPublicKey};
-use serde::{Deserialize, Serialize};
-use serde_with::{DeserializeFromStr, SerializeDisplay};
+use rsa::traits::PublicKeyParts;
+use rsa::{BigUint, RsaPrivateKey, RsaPublicKey};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde_with::base64::Base64;
+use serde_with::{serde_as, DeserializeFromStr, SerializeDisplay};
 
 use crate::error::{Error, Result};
 
@@ -49,9 +51,38 @@ impl FromStr for Hash {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct PublicKey {
     key: RsaPublicKey,
+}
+
+#[serde_as]
+#[derive(Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
+struct EncodedPublicKey {
+    #[serde_as(as = "Base64")]
+    modulus: Vec<u8>,
+    #[serde_as(as = "Base64")]
+    public_exponent: Vec<u8>,
+}
+
+impl Serialize for PublicKey {
+    fn serialize<S: Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        let encoded = EncodedPublicKey {
+            modulus: self.key.n().to_bytes_be(),
+            public_exponent: self.key.e().to_bytes_be(),
+        };
+        encoded.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for PublicKey {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
+        let encoded = EncodedPublicKey::deserialize(deserializer)?;
+        let modulus = BigUint::from_bytes_be(&encoded.modulus);
+        let public_exponent = BigUint::from_bytes_be(&encoded.public_exponent);
+        let key = RsaPublicKey::new(modulus, public_exponent).unwrap();
+        Ok(PublicKey { key })
+    }
 }
 
 impl PublicKey {
@@ -128,11 +159,13 @@ pub fn generate_keypair() -> (PrivateKey, PublicKey) {
 }
 
 /// A container of signed data
+#[serde_as]
 #[derive(Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Signed<T> {
     // The public key used for the signature of the hash of the data.
     pub public_key: PublicKey,
     /// The signature of the hash of the data.
+    #[serde_as(as = "Base64")]
     pub signature: Vec<u8>,
     /// The hash of the data.
     pub hash: Hash,
