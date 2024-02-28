@@ -41,7 +41,7 @@ struct PeerInfo {
     public_key: PublicKey,
 }
 
-pub fn bootstrap(config: BootstrapConfig) -> (Node, Broadcaster<Message>) {
+pub fn bootstrap(config: BootstrapConfig) -> (Node, Broadcaster<Message>, usize) {
     if config.bootstrap_leader {
         let genesis_validator = config.public_key.clone();
         std::thread::spawn(move || {
@@ -88,7 +88,7 @@ pub fn bootstrap(config: BootstrapConfig) -> (Node, Broadcaster<Message>) {
         }
     }
 
-    (node, network)
+    (node, network, my_index)
 }
 
 #[cfg(test)]
@@ -123,7 +123,7 @@ mod test {
                 private_key,
             };
             let handle = std::thread::spawn(move || {
-                let (mut node, mut network) = bootstrap(config);
+                let (mut node, mut network, _) = bootstrap(config);
                 loop {
                     let timeout = node.step(&mut network);
                     if node.blockchain().len() > 2 {
@@ -146,7 +146,7 @@ mod test {
             public_key,
             private_key,
         };
-        let (mut node, mut network) = bootstrap(config);
+        let (mut node, mut network, _) = bootstrap(config);
         loop {
             let timeout = node.step(&mut network);
             if node.blockchain().len() > 2 {

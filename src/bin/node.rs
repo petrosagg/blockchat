@@ -1,5 +1,5 @@
 use std::{
-    net::{IpAddr, SocketAddr},
+    net::{IpAddr, Ipv4Addr, SocketAddr},
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -42,6 +42,10 @@ struct Args {
     /// The IP address to bind to.
     #[arg(long, default_value = "127.0.0.1")]
     listen_ip: IpAddr,
+    /// The base port for the HTTP API. Each node will start its HTTP server on
+    /// `localhost:(api_base_port + node_index)`.
+    #[arg(long, default_value = "10000")]
+    api_base_port: u16,
     /// The maximum block capacity.
     #[arg(long, default_value = "5")]
     block_capacity: usize,
@@ -64,7 +68,7 @@ async fn main() {
         private_key,
     };
 
-    let (node, mut network) = bootstrap::bootstrap(config);
+    let (node, mut network, my_index) = bootstrap::bootstrap(config);
 
     let shared_node = Arc::new(Mutex::new(node));
     // Start a thread that will run the node
@@ -81,7 +85,10 @@ async fn main() {
         .route("/transaction", post(create_transaction))
         .with_state(shared_node);
 
-    let listener = TcpListener::bind((args.listen_ip, 0)).await.unwrap();
+    let api_port = args.api_base_port + u16::try_from(my_index).unwrap();
+    let listener = TcpListener::bind((Ipv4Addr::new(127, 0, 0, 1), api_port))
+        .await
+        .unwrap();
 
     log::info!(
         "Node HTTP API listening on {}",
