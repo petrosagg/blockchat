@@ -11,12 +11,11 @@ use axum::{
     Json, Router,
 };
 use clap::Parser;
-use serde::{Deserialize, Serialize};
 use tokio::net::TcpListener;
 
 use blockchat::{
     bootstrap::{self, BootstrapConfig},
-    crypto::{self, Address},
+    crypto,
     wallet::{Transaction, Wallet},
 };
 use blockchat::{
