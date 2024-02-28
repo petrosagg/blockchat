@@ -1,15 +1,23 @@
 use std::{
     net::{IpAddr, SocketAddr},
     sync::{Arc, Mutex},
+    time::Duration,
 };
 
-use axum::{extract::State, routing::get, Json, Router};
+use axum::{
+    extract::State,
+    http::StatusCode,
+    routing::{get, post},
+    Json, Router,
+};
 use clap::Parser;
+use serde::{Deserialize, Serialize};
 use tokio::net::TcpListener;
 
 use blockchat::{
     bootstrap::{self, BootstrapConfig},
-    crypto,
+    crypto::{self, Address},
+    wallet::{Transaction, Wallet},
 };
 use blockchat::{
     crypto::Signed,
@@ -62,12 +70,15 @@ async fn main() {
     // Start a thread that will run the node
     let node = Arc::clone(&shared_node);
     std::thread::spawn(move || loop {
-        let timeout = { node.lock().unwrap().step(&mut network) };
-        network.await_events(timeout);
+        let _ = { node.lock().unwrap().step(&mut network) };
+        network.await_events(Some(Duration::from_millis(15)));
     });
 
     let app = Router::new()
         .route("/block", get(get_block))
+        .route("/balance", get(get_balance))
+        .route("/stake", post(set_stake))
+        .route("/transaction", post(create_transaction))
         .with_state(shared_node);
 
     let listener = TcpListener::bind((args.listen_ip, 0)).await.unwrap();
@@ -81,4 +92,54 @@ async fn main() {
 
 async fn get_block(State(node): State<Arc<Mutex<Node>>>) -> Json<Signed<Block>> {
     Json(node.lock().unwrap().blockchain().last().cloned().unwrap())
+}
+
+async fn get_balance(State(node): State<Arc<Mutex<Node>>>) -> Json<Wallet> {
+    Json(node.lock().unwrap().wallet().clone())
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(untagged)]
+enum CreateTransactionKind {
+    Coin { amount: u64 },
+    Message { message: String },
+}
+
+#[derive(Serialize, Deserialize)]
+struct CreateTransactionRequest {
+    recipient: Address,
+    kind: CreateTransactionKind,
+}
+
+async fn create_transaction(
+    State(node): State<Arc<Mutex<Node>>>,
+    Json(req): Json<CreateTransactionRequest>,
+) -> (StatusCode, Json<Signed<Transaction>>) {
+    let mut node = node.lock().unwrap();
+    let wallet = node.wallet();
+    let tx = match req.kind {
+        CreateTransactionKind::Coin { amount } => wallet.create_coin_tx(req.recipient, amount),
+        CreateTransactionKind::Message { message } => {
+            wallet.create_message_tx(req.recipient, message)
+        }
+    };
+    let signed_tx = node.sign_transaction(tx);
+    node.broadcast_transaction(signed_tx.clone());
+    (StatusCode::CREATED, Json(signed_tx))
+}
+
+#[derive(Serialize, Deserialize)]
+struct SetStakeRequest {
+    amount: u64,
+}
+
+async fn set_stake(
+    State(node): State<Arc<Mutex<Node>>>,
+    Json(req): Json<SetStakeRequest>,
+) -> (StatusCode, Json<Signed<Transaction>>) {
+    let mut node = node.lock().unwrap();
+    let tx = node.wallet().create_stake_tx(req.amount);
+    let signed_tx = node.sign_transaction(tx);
+    node.broadcast_transaction(signed_tx.clone());
+    (StatusCode::CREATED, Json(signed_tx))
 }

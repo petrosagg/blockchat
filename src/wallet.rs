@@ -5,16 +5,16 @@ use crate::error::{Error, Result};
 
 const FEE_PERCENT: u64 = 3;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Wallet {
     /// The address of this wallet.
     pub address: Address,
     /// The current BCC balance of the wallet.
-    balance: u64,
+    pub balance: u64,
     /// The currently staked amount.
-    stake: u64,
+    pub stake: u64,
     /// An auto-increment nonce used to sign transactions.
-    nonce: u64,
+    pub nonce: u64,
 }
 
 impl Wallet {
@@ -41,7 +41,7 @@ impl Wallet {
         self.stake
     }
 
-    fn create_tx(&mut self, kind: TransactionKind) -> Transaction {
+    fn create_tx(&self, kind: TransactionKind) -> Transaction {
         Transaction {
             sender_address: self.address.clone(),
             kind,
@@ -103,15 +103,15 @@ impl Wallet {
         Ok(())
     }
 
-    pub fn create_coin_tx(&mut self, receiver: Address, amount: u64) -> Transaction {
+    pub fn create_coin_tx(&self, receiver: Address, amount: u64) -> Transaction {
         self.create_tx(TransactionKind::Coin(amount, receiver))
     }
 
-    pub fn create_message_tx(&mut self, receiver: Address, message: String) -> Transaction {
+    pub fn create_message_tx(&self, receiver: Address, message: String) -> Transaction {
         self.create_tx(TransactionKind::Message(message, receiver))
     }
 
-    pub fn create_stake_tx(&mut self, amount: u64) -> Transaction {
+    pub fn create_stake_tx(&self, amount: u64) -> Transaction {
         self.create_tx(TransactionKind::Stake(amount))
     }
 

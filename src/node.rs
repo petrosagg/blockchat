@@ -32,6 +32,8 @@ pub struct Node {
     /// The state of each known wallet indexed by public key. We use a BTreeMap to always maintain
     /// the wallets in sorted public key order which helps perform the validator election.
     wallets: BTreeMap<Address, Wallet>,
+    /// Messages that should be broadcast on the next tick
+    outbox: Vec<Message>,
 }
 
 impl fmt::Debug for Node {
@@ -85,6 +87,7 @@ impl Node {
             private_key,
             blockchain: vec![Signed::new_invalid(genesis_block)],
             wallets,
+            outbox: vec![],
         }
     }
 
@@ -107,6 +110,16 @@ impl Node {
                 }
             })
             .unwrap()
+    }
+
+    /// The address of this node's wallet.
+    pub fn address(&self) -> &Address {
+        &self.address
+    }
+
+    /// This node's wallet.
+    pub fn wallet(&self) -> &Wallet {
+        &self.wallets[&self.address]
     }
 
     pub fn blockchain(&self) -> &[Signed<Block>] {
@@ -237,8 +250,33 @@ impl Node {
         self.private_key.sign(new_block)
     }
 
+    pub fn sign_transaction(&self, tx: Transaction) -> Signed<Transaction> {
+        self.private_key.sign(tx)
+    }
+
+    /// Broadcasts a transaction to the network
+    pub fn broadcast_transaction(&mut self, tx: Signed<Transaction>) {
+        if let Err(err) = self.handle_transaction(tx.clone()) {
+            log::warn!("{}: broadcasting invalid transaction {err}", self.name);
+        }
+        self.outbox.push(Message::Transaction(tx));
+    }
+
+    /// Broadcasts a block to the network
+    pub fn broadcast_block(&mut self, block: Signed<Block>) {
+        if let Err(err) = self.handle_block(block.clone()) {
+            log::warn!("{}: broadcasting invalid block {err}", self.name);
+        }
+        self.outbox.push(Message::Block(block));
+    }
+
     pub fn step<N: Network<Message>>(&mut self, network: &mut N) -> Option<Duration> {
-        // First handle all pending messages from the network
+        // First send all outstanding messages to the network
+        for message in self.outbox.drain(..) {
+            network.send(&message);
+        }
+
+        // Then handle all pending messages from the network
         while let Some(msg) = network.recv() {
             match msg {
                 Message::Transaction(tx) => match self.handle_transaction(tx) {
