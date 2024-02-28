@@ -121,6 +121,7 @@ async fn create_transaction(
         }
     };
     let signed_tx = node.sign_transaction(tx);
+    node.wallet_mut().apply_tx(signed_tx.clone()).unwrap();
     node.broadcast_transaction(signed_tx.clone());
     (StatusCode::CREATED, Json(signed_tx))
 }
@@ -132,6 +133,7 @@ async fn set_stake(
     let mut node = node.lock().unwrap();
     let tx = node.wallet().create_stake_tx(req.amount);
     let signed_tx = node.sign_transaction(tx);
+    node.wallet_mut().apply_tx(signed_tx.clone()).unwrap();
     node.broadcast_transaction(signed_tx.clone());
     (StatusCode::CREATED, Json(signed_tx))
 }

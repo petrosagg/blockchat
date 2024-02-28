@@ -29,6 +29,9 @@ pub struct Node {
     public_key: PublicKey,
     /// The private key of the wallet of this node.
     private_key: PrivateKey,
+    /// The wallet of this node that can be manipulated independencly of the block minting process
+    /// to create transactions.
+    node_wallet: Wallet,
     /// The state of each known wallet indexed by public key. We use a BTreeMap to always maintain
     /// the wallets in sorted public key order which helps perform the validator election.
     wallets: BTreeMap<Address, Wallet>,
@@ -61,7 +64,7 @@ impl Node {
         let mut wallets = BTreeMap::new();
         let node_address = Address::from_public_key(&public_key);
         let node_wallet = Wallet::from_address(node_address.clone());
-        wallets.insert(node_address, node_wallet);
+        wallets.insert(node_address.clone(), node_wallet.clone());
 
         let genesis_address = Address::from_public_key(&genesis_validator);
         let genesis_tx = Transaction {
@@ -87,7 +90,8 @@ impl Node {
             name,
             capacity,
             pending_transactions: BTreeMap::new(),
-            address: Address::from_public_key(&public_key),
+            node_wallet: wallets[&node_address].clone(),
+            address: node_address,
             public_key,
             private_key,
             blockchain: vec![Signed::new_invalid(genesis_block)],
@@ -124,7 +128,12 @@ impl Node {
 
     /// This node's wallet.
     pub fn wallet(&self) -> &Wallet {
-        &self.wallets[&self.address]
+        &self.node_wallet
+    }
+
+    /// This node's wallet.
+    pub fn wallet_mut(&mut self) -> &mut Wallet {
+        &mut self.node_wallet
     }
 
     pub fn blockchain(&self) -> &[Signed<Block>] {
@@ -242,6 +251,8 @@ impl Node {
 
             if transactions.len() < self.capacity {
                 transactions.push(tx);
+            } else {
+                self.pending_transactions.insert(key, tx);
             }
         }
 
