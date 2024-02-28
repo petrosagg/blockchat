@@ -38,7 +38,7 @@ impl Command {
         match self {
             Command::NewTransaction(tx) => todo!(),
             Command::NewMessage(tx) => todo!(),
-            Command::Stake(tx) => todo!(),
+            Command::Stake(tx) => tx.run(client).await,
             Command::ViewLastBlockCommand => Command::get_last_block(client).await,
             Command::ShowBalanceCommand => Command::get_balance(client).await,
             Command::HelpCommand => Command::help(),
@@ -74,8 +74,8 @@ pub struct NewTransactionCommand {
 impl FromStr for NewTransactionCommand {
     type Err = String;
 
-    fn from_str(_cmd: &str) -> Result<Self, Self::Err> {
-        let mut parts = _cmd.split_whitespace();
+    fn from_str(cmd: &str) -> Result<Self, Self::Err> {
+        let mut parts = cmd.split_whitespace();
 
         assert_eq!(parts.next(), Some("t"));
 
@@ -104,8 +104,8 @@ pub struct NewMessageCommand {
 impl FromStr for NewMessageCommand {
     type Err = String;
 
-    fn from_str(_cmd: &str) -> Result<Self, Self::Err> {
-        let mut parts = _cmd.split_whitespace();
+    fn from_str(cmd: &str) -> Result<Self, Self::Err> {
+        let mut parts = cmd.split_whitespace();
 
         assert_eq!(parts.next(), Some("m"));
 
@@ -128,11 +128,18 @@ pub struct StakeCommand {
     pub amount: u64,
 }
 
+impl StakeCommand {
+    pub async fn run(&self, client: BlockchatClient) {
+        let stake_tx = client.stake(self.amount).await.unwrap();
+        println!("{:#?}", stake_tx);
+    }
+}
+
 impl FromStr for StakeCommand {
     type Err = String;
 
-    fn from_str(_cmd: &str) -> Result<Self, Self::Err> {
-        let mut parts = _cmd.split_whitespace();
+    fn from_str(cmd: &str) -> Result<Self, Self::Err> {
+        let mut parts = cmd.split_whitespace();
 
         assert_eq!(parts.next(), Some("stake"));
 

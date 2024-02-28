@@ -83,7 +83,9 @@ pub fn bootstrap(config: BootstrapConfig) -> (Node, Broadcaster<Message>, usize)
             let tx = genesis_wallet
                 .create_coin_tx(Address::from_public_key(&peer_info.public_key), 1000);
             let signed_tx = node.sign_transaction(tx);
-            genesis_wallet.apply_tx(signed_tx.clone()).expect("known valid tx");
+            genesis_wallet
+                .apply_tx(signed_tx.clone())
+                .expect("known valid tx");
             node.broadcast_transaction(signed_tx);
         }
     }

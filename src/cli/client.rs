@@ -1,20 +1,37 @@
-use reqwest::{Url, Client};
+use reqwest::{Client, Url};
+use serde::{Deserialize, Serialize};
 
-use crate::{crypto::{Address, Signed}, node::Block, wallet::Wallet};
+use crate::{
+    crypto::{Address, Signed},
+    node::Block,
+    wallet::{Transaction, Wallet},
+};
 
 #[derive(Clone)]
 pub struct BlockchatClient {
     rpc_url: Url,
-    client:  Client
+    client: Client,
 }
 
 type Err = String;
 
+#[derive(Serialize, Deserialize)]
+pub struct SetStakeRequest {
+    pub amount: u64,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum CreateTransactionRequest {
+    Coin { recipient: Address, amount: u64 },
+    Message { recipient: Address, message: String },
+}
+
 impl BlockchatClient {
     pub fn new(rpc_url: Url) -> Self {
         BlockchatClient {
-          rpc_url,
-          client: Client::new()
+            rpc_url,
+            client: Client::new(),
         }
     }
 
@@ -27,9 +44,10 @@ impl BlockchatClient {
     }
 
     pub async fn get_last_block(&self) -> Result<Signed<Block>, Err> {
-        let request = self.client.get(self.rpc_url.join("block").unwrap());
+        let url = self.rpc_url.join("block").unwrap();
+        let request = self.client.get(url);
         let response = request.send().await.unwrap();
-        let last_block = response.json::<Signed<Block>>().await.unwrap();
+        let last_block = response.json().await.unwrap();
 
         Ok(last_block)
     }
@@ -48,8 +66,12 @@ impl BlockchatClient {
         todo!();
     }
 
-    pub fn stake(&self, amount: u64) -> Result<(u64), Err> {
-        // TODO: Call API to send stake transaction
-        todo!();
+    pub async fn stake(&self, amount: u64) -> Result<Signed<Transaction>, Err> {
+        let url = self.rpc_url.join("stake").unwrap();
+        let request = self.client.post(url).json(&SetStakeRequest { amount });
+        let response = request.send().await.unwrap();
+
+        let stake_tx = response.json().await.unwrap();
+        Ok(stake_tx)
     }
 }

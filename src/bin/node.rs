@@ -20,6 +20,7 @@ use blockchat::{
     wallet::{Transaction, Wallet},
 };
 use blockchat::{
+    cli::client::{CreateTransactionRequest, SetStakeRequest},
     crypto::Signed,
     network::Network,
     node::{Block, Node},
@@ -105,13 +106,6 @@ async fn get_balance(State(node): State<Arc<Mutex<Node>>>) -> Json<Wallet> {
     Json(node.lock().unwrap().wallet().clone())
 }
 
-#[derive(Serialize, Deserialize)]
-#[serde(untagged)]
-enum CreateTransactionRequest {
-    Coin { recipient: Address, amount: u64 },
-    Message { recipient: Address, message: String },
-}
-
 async fn create_transaction(
     State(node): State<Arc<Mutex<Node>>>,
     Json(req): Json<CreateTransactionRequest>,
@@ -129,11 +123,6 @@ async fn create_transaction(
     let signed_tx = node.sign_transaction(tx);
     node.broadcast_transaction(signed_tx.clone());
     (StatusCode::CREATED, Json(signed_tx))
-}
-
-#[derive(Serialize, Deserialize)]
-struct SetStakeRequest {
-    amount: u64,
 }
 
 async fn set_stake(
