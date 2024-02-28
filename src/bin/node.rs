@@ -100,15 +100,9 @@ async fn get_balance(State(node): State<Arc<Mutex<Node>>>) -> Json<Wallet> {
 
 #[derive(Serialize, Deserialize)]
 #[serde(untagged)]
-enum CreateTransactionKind {
-    Coin { amount: u64 },
-    Message { message: String },
-}
-
-#[derive(Serialize, Deserialize)]
-struct CreateTransactionRequest {
-    recipient: Address,
-    kind: CreateTransactionKind,
+enum CreateTransactionRequest {
+    Coin { recipient: Address, amount: u64 },
+    Message { recipient: Address, message: String },
 }
 
 async fn create_transaction(
@@ -117,10 +111,12 @@ async fn create_transaction(
 ) -> (StatusCode, Json<Signed<Transaction>>) {
     let mut node = node.lock().unwrap();
     let wallet = node.wallet();
-    let tx = match req.kind {
-        CreateTransactionKind::Coin { amount } => wallet.create_coin_tx(req.recipient, amount),
-        CreateTransactionKind::Message { message } => {
-            wallet.create_message_tx(req.recipient, message)
+    let tx = match req {
+        CreateTransactionRequest::Coin { recipient, amount } => {
+            wallet.create_coin_tx(recipient, amount)
+        }
+        CreateTransactionRequest::Message { recipient, message } => {
+            wallet.create_message_tx(recipient, message)
         }
     };
     let signed_tx = node.sign_transaction(tx);
