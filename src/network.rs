@@ -1,9 +1,7 @@
-use std::{
-    io::{BufRead, BufReader, Write},
-    net::TcpStream,
-    sync::mpsc::{self, Receiver, Sender},
-    time::Duration,
-};
+use std::io::{BufRead, BufReader, Write};
+use std::net::TcpStream;
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::time::Duration;
 
 use serde::{de::DeserializeOwned, Serialize};
 

@@ -1,7 +1,5 @@
-use std::{
-    net::{SocketAddr, TcpListener, TcpStream},
-    time::Duration,
-};
+use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::time::Duration;
 
 use serde::{de::DeserializeOwned, Serialize};
 

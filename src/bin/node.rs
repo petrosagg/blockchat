@@ -1,29 +1,21 @@
-use std::{
-    net::{IpAddr, Ipv4Addr, SocketAddr},
-    sync::{Arc, Mutex},
-    time::Duration,
-};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
-use axum::{
-    extract::State,
-    http::StatusCode,
-    routing::{get, post},
-    Json, Router,
-};
+use axum::extract::State;
+use axum::http::StatusCode;
+use axum::routing::{get, post};
+use axum::{Json, Router};
 use clap::Parser;
 use tokio::net::TcpListener;
 
-use blockchat::{
-    bootstrap::{self, BootstrapConfig},
-    crypto,
-    wallet::{Transaction, Wallet},
-};
-use blockchat::{
-    cli::client::{CreateTransactionRequest, SetStakeRequest},
-    crypto::Signed,
-    network::Network,
-    node::{Block, Node},
-};
+use blockchat::bootstrap::{self, BootstrapConfig};
+use blockchat::cli::client::{CreateTransactionRequest, SetStakeRequest};
+use blockchat::crypto;
+use blockchat::crypto::Signed;
+use blockchat::network::Network;
+use blockchat::node::{Block, Node};
+use blockchat::wallet::{Transaction, Wallet};
 
 /// A node for the BlockChat blockchain network.
 #[derive(Parser, Debug)]
