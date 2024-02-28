@@ -10,7 +10,6 @@ use serde::{Deserialize, Serialize};
 use crate::crypto::{Address, PrivateKey, PublicKey};
 use crate::network::broadcast::Broadcaster;
 use crate::network::discovery::{bootstrap_helper, discover_peers};
-use crate::network::Network;
 use crate::node::{Message, Node};
 use crate::wallet::Wallet;
 
@@ -60,11 +59,11 @@ pub fn bootstrap(config: BootstrapConfig) -> (Node, Broadcaster<Message>) {
         discover_peers::<PeerInfo, PublicKey>(config.bootstrap_addr, peer_info);
 
     let peer_addrs: Vec<_> = peer_infos.iter().map(|info| info.listen_addr).collect();
-    let mut network = Broadcaster::<Message>::new(listener, &peer_addrs, my_index);
+    let network = Broadcaster::<Message>::new(listener, &peer_addrs, my_index);
 
     let genesis_funds = GENESIS_FUNDS_PER_NODE * (config.peers as u64);
 
-    let node = Node::new(
+    let mut node = Node::new(
         format!("node-{my_index}"),
         config.public_key,
         config.private_key.clone(),
@@ -83,8 +82,9 @@ pub fn bootstrap(config: BootstrapConfig) -> (Node, Broadcaster<Message>) {
             }
             let tx = genesis_wallet
                 .create_coin_tx(Address::from_public_key(&peer_info.public_key), 1000);
-            let signed_tx = config.private_key.sign(tx);
-            network.send(&Message::Transaction(signed_tx));
+            let signed_tx = node.sign_transaction(tx);
+            genesis_wallet.apply_tx(signed_tx.clone()).expect("known valid tx");
+            node.broadcast_transaction(signed_tx);
         }
     }
 
@@ -94,6 +94,7 @@ pub fn bootstrap(config: BootstrapConfig) -> (Node, Broadcaster<Message>) {
 #[cfg(test)]
 mod test {
     use crate::crypto;
+    use crate::network::Network;
 
     use super::*;
 

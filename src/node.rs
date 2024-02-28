@@ -261,6 +261,7 @@ impl Node {
 
     /// Broadcasts a transaction to the network
     pub fn broadcast_transaction(&mut self, tx: Signed<Transaction>) {
+        log::trace!("{}: broadcasting tx {:?}", self.name, tx.data);
         if let Err(err) = self.handle_transaction(tx.clone()) {
             log::warn!("{}: broadcasting invalid transaction {err}", self.name);
         }
