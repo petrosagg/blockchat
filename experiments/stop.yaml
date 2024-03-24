@@ -1,0 +1,12 @@
+- name: Stop Blockchat
+  hosts: bootstrap, nodes
+  tasks:
+    - name: Find PID of Blockchat
+      shell: pgrep -f '/root/blockchat/target/release/node'
+      register: rust_app_pid
+      ignore_errors: true
+
+    - name: Stop Blockchat
+      shell: kill -9 {{ rust_app_pid.stdout.split() | join(' ') }}
+      when: rust_app_pid.stdout != ""
+      ignore_errors: yes
