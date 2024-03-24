@@ -1,0 +1,7 @@
+- name: Build Blockchat
+  hosts: bootstrap, nodes
+  tasks:
+    - name: cargo build
+      shell: ~/.cargo/bin/cargo build --release
+      args:
+        chdir: "~/blockchat"
