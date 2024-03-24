@@ -1,0 +1,15 @@
+- name: Run Bootstrap node
+  hosts: bootstrap
+  tasks:
+    - name: Run Bootstrap
+      shell: nohup ~/blockchat/target/release/node --peers 2 --bootstrap-leader --bootstrap-addr 0.0.0.0:7000 > ~/output.log 2>&1 &
+      async: 10
+      poll: 0
+
+- name: Run nodes
+  hosts: nodes
+  tasks:
+    - name: Run node
+      shell: nohup ~/blockchat/target/release/node --peers 2 --bootstrap-addr 172.18.0.3:7000 > ~/output.log 2>&1 &
+      async: 10
+      poll: 0
