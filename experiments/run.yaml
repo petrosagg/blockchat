@@ -1,15 +1,27 @@
 - name: Run Bootstrap node
   hosts: bootstrap
   tasks:
+    - name: Retrieve bootstrap IP address
+      shell: ip a show eth0 | grep inet | awk '{print $2}' | cut -d/ -f1
+      register: public_ip
+
+    - name: Set the IP address as a fact accessible in later plays
+      set_fact:
+        bootstrap_ip: "{{ public_ip.stdout }}"
+
     - name: Run Bootstrap
-      shell: nohup ~/blockchat/target/release/node --peers 2 --bootstrap-leader --bootstrap-addr 0.0.0.0:7000 > ~/output.log 2>&1 &
+      shell: nohup ~/blockchat/target/release/node --peers 2 --bootstrap-leader --bootstrap-addr 0.0.0.0:7000 --listen-ip {{ public_ip.stdout }} > ~/output.log 2>&1 &
       async: 10
       poll: 0
 
 - name: Run nodes
   hosts: nodes
   tasks:
+    - name: Retrieve node IP address
+      shell: ip a show eth0 | grep inet | awk '{print $2}' | cut -d/ -f1
+      register: public_ip
+
     - name: Run node
-      shell: nohup ~/blockchat/target/release/node --peers 2 --bootstrap-addr 172.18.0.3:7000 > ~/output.log 2>&1 &
+      shell: nohup ~/blockchat/target/release/node --peers 2 --bootstrap-addr {{ hostvars['bootstrap_node']['bootstrap_ip'] }}:7000 --listen-ip {{ public_ip.stdout }} > ~/output.log 2>&1 &
       async: 10
       poll: 0

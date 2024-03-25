@@ -1,5 +1,0 @@
-[nodes]
-node_1 ansible_host={IP} ansible_port={PORT}
-
-[bootstrap]
-bootstrap_node ansible_host={IP} ansible_port={PORT}

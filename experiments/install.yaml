@@ -10,6 +10,10 @@
       apt:
         name: build-essential
 
+    - name: apt install iproute2
+      apt:
+        name: iproute2
+
     - name: check if cargo is installed
       shell: ~/.cargo/bin/cargo --version
       register: cargo_exists
