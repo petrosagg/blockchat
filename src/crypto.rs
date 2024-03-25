@@ -20,7 +20,7 @@ pub const KEY_SIZE: usize = 2048;
 #[derive(
     Default, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, DeserializeFromStr, SerializeDisplay,
 )]
-pub struct Hash([u8; 32]);
+pub struct Hash(pub [u8; 32]);
 
 impl Hash {
     pub fn digest<T: Serialize>(data: T) -> Self {

@@ -60,7 +60,7 @@ async fn main() {
         private_key,
     };
 
-    let (node, mut network, my_index) = bootstrap::bootstrap(config);
+    let (node, mut network, my_index, _) = bootstrap::bootstrap(config);
 
     let shared_node = Arc::new(Mutex::new(node));
     // Start a thread that will run the node

@@ -1,6 +1,3 @@
-// Remove this when it's not a WIP
-#![allow(dead_code)]
-
 //! Routines for bootstrapping a blockchat network of a given configuration.
 
 use std::net::{IpAddr, SocketAddr, TcpListener};
@@ -33,15 +30,15 @@ pub struct BootstrapConfig {
 }
 
 /// The peer info exchanged during discovery.
-#[derive(Serialize, Deserialize)]
-struct PeerInfo {
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PeerInfo {
     /// The socket address the peer will listen on.
-    listen_addr: SocketAddr,
+    pub listen_addr: SocketAddr,
     /// The public key of this peer.
-    public_key: PublicKey,
+    pub public_key: PublicKey,
 }
 
-pub fn bootstrap(config: BootstrapConfig) -> (Node, Broadcaster<Message>, usize) {
+pub fn bootstrap(config: BootstrapConfig) -> (Node, Broadcaster<Message>, usize, Vec<PeerInfo>) {
     if config.bootstrap_leader {
         let genesis_validator = config.public_key.clone();
         std::thread::spawn(move || {
@@ -59,7 +56,7 @@ pub fn bootstrap(config: BootstrapConfig) -> (Node, Broadcaster<Message>, usize)
         discover_peers::<PeerInfo, PublicKey>(config.bootstrap_addr, peer_info);
 
     let peer_addrs: Vec<_> = peer_infos.iter().map(|info| info.listen_addr).collect();
-    let network = Broadcaster::<Message>::new(listener, &peer_addrs, my_index);
+    let mut network = Broadcaster::<Message>::new(listener, &peer_addrs, my_index);
 
     let genesis_funds = GENESIS_FUNDS_PER_NODE * (config.peers as u64);
 
@@ -75,7 +72,7 @@ pub fn bootstrap(config: BootstrapConfig) -> (Node, Broadcaster<Message>, usize)
     if config.bootstrap_leader {
         let mut genesis_wallet = Wallet::from_public_key(&genesis_validator);
         genesis_wallet.add_funds(genesis_funds);
-        for peer_info in peer_infos {
+        for peer_info in peer_infos.iter() {
             // No need to seed the genesis wallet.
             if peer_info.public_key == genesis_validator {
                 continue;
@@ -88,9 +85,10 @@ pub fn bootstrap(config: BootstrapConfig) -> (Node, Broadcaster<Message>, usize)
                 .expect("known valid tx");
             node.broadcast_transaction(signed_tx);
         }
+        node.step(&mut network);
     }
 
-    (node, network, my_index)
+    (node, network, my_index, peer_infos)
 }
 
 #[cfg(test)]
@@ -125,7 +123,7 @@ mod test {
                 private_key,
             };
             let handle = std::thread::spawn(move || {
-                let (mut node, mut network, _) = bootstrap(config);
+                let (mut node, mut network, _, _) = bootstrap(config);
                 loop {
                     let timeout = node.step(&mut network);
                     if node.blockchain().len() > 2 {
@@ -148,7 +146,7 @@ mod test {
             public_key,
             private_key,
         };
-        let (mut node, mut network, _) = bootstrap(config);
+        let (mut node, mut network, _, _) = bootstrap(config);
         loop {
             let timeout = node.step(&mut network);
             if node.blockchain().len() > 2 {

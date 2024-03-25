@@ -146,6 +146,16 @@ pub enum TransactionKind {
 }
 
 impl Transaction {
+    /// Calculates the cost of this transaction.
+    pub fn cost(&self) -> u64 {
+        let value = match &self.kind {
+            TransactionKind::Coin(amount, _) => *amount,
+            TransactionKind::Message(_, _) => 0,
+            TransactionKind::Stake(_) => 0,
+        };
+        self.fees() + value
+    }
+
     /// Calculates the required fees of this transaction.
     pub fn fees(&self) -> u64 {
         match &self.kind {

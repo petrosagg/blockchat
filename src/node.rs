@@ -48,6 +48,7 @@ impl fmt::Debug for Node {
             .field("public_key", &self.public_key)
             .field("private_key", &"REDACTED")
             .field("wallets", &self.wallets)
+            .field("node_wallet", &self.node_wallet)
             .finish()
     }
 }
@@ -77,7 +78,9 @@ impl Node {
             timestamp: DateTime::<Utc>::MIN_UTC,
             transactions: vec![Signed::new_invalid(genesis_tx)],
             validator: Address::invalid(),
-            parent_hash: Hash::default(),
+            parent_hash: "0000000000000000000000000000000000000000000000000000000000000001"
+                .parse()
+                .unwrap(),
         };
 
         let genesis_wallet = wallets
@@ -101,8 +104,8 @@ impl Node {
     }
 
     fn next_validator(&self) -> Address {
-        // TODO: use the hash of the last block
-        let mut rng = StdRng::seed_from_u64(self.blockchain.len() as u64);
+        let seed = self.blockchain.last().unwrap().hash.0;
+        let mut rng = StdRng::from_seed(seed);
         // Construct the ballot from the current set of
         let total_stake: u64 = self.wallets.values().map(|w| w.staked_amount()).sum();
         assert!(total_stake > 0, "no stakers, BlockChat is doomed");
@@ -138,6 +141,11 @@ impl Node {
 
     pub fn blockchain(&self) -> &[Signed<Block>] {
         &self.blockchain
+    }
+
+    /// Reports whether this node is aware of non-confirmed transactions
+    pub fn has_pending_transactions(&self) -> bool {
+        !self.pending_transactions.is_empty()
     }
 
     /// Adds a transaction in the set of pending transactions
@@ -207,6 +215,9 @@ impl Node {
         self.wallets = new_wallets;
         log::info!("{}: accepted valid block {:?}", self.name, block.hash);
         self.blockchain.push(block);
+
+        // Reset the node wallet based on the state received
+        self.node_wallet = self.wallets[&self.address].clone();
         Ok(())
     }
 
@@ -275,7 +286,12 @@ impl Node {
 
     /// Broadcasts a transaction to the network
     pub fn broadcast_transaction(&mut self, tx: Signed<Transaction>) {
-        log::trace!("{}: broadcasting tx {:?}: {:?}", self.name, tx.hash, tx.data);
+        log::trace!(
+            "{}: broadcasting tx {:?}: {:?}",
+            self.name,
+            tx.hash,
+            tx.data
+        );
         if let Err(err) = self.handle_transaction(tx.clone()) {
             log::warn!("{}: broadcasting invalid transaction {err}", self.name);
         }
@@ -310,10 +326,14 @@ impl Node {
             }
         }
 
+        // TODO: this might have to run multiple times per step if this node is the validator of
+        // the next block too.
         if self.address == self.next_validator() {
             let last_block_ts = self.blockchain().last().unwrap().data.timestamp;
             let next_block_ts = last_block_ts + MINT_INTERVAL;
-            if Utc::now() > next_block_ts {
+            // A new block is minted if we have enough pending transaction to create a full block
+            // or if enough time has passed from the previous mint.
+            if Utc::now() > next_block_ts || self.pending_transactions.len() >= self.capacity {
                 let block = self.mint_block();
                 log::info!("{}: broadcasting minted block {:?}", self.name, block.hash);
                 self.handle_block(block.clone())
