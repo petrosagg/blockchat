@@ -194,6 +194,9 @@ impl Node {
                         .or_insert_with(|| Wallet::from_address(receiver.clone()));
 
                     receiver_wallet.apply_tx(tx.clone())?;
+                    if receiver == &self.address {
+                        self.node_wallet.apply_tx(tx.clone())?;
+                    }
                 }
                 TransactionKind::Stake(_) => {}
             }
@@ -205,6 +208,9 @@ impl Node {
             .entry(validator.clone())
             .or_insert_with(|| Wallet::from_address(validator.clone()));
         validator_wallet.add_funds(total_fees);
+        if validator == self.address {
+            self.node_wallet.add_funds(total_fees);
+        }
 
         for tx in block.data.transactions.iter() {
             log::trace!("{}: accepted valid tx {:?}", self.name, tx.hash);
@@ -216,8 +222,6 @@ impl Node {
         log::info!("{}: accepted valid block {:?}", self.name, block.hash);
         self.blockchain.push(block);
 
-        // Reset the node wallet based on the state received
-        self.node_wallet = self.wallets[&self.address].clone();
         Ok(())
     }
 

@@ -70,17 +70,15 @@ pub fn bootstrap(config: BootstrapConfig) -> (Node, Broadcaster<Message>, usize,
     );
 
     if config.bootstrap_leader {
-        let mut genesis_wallet = Wallet::from_public_key(&genesis_validator);
-        genesis_wallet.add_funds(genesis_funds);
         for peer_info in peer_infos.iter() {
             // No need to seed the genesis wallet.
             if peer_info.public_key == genesis_validator {
                 continue;
             }
-            let tx = genesis_wallet
+            let tx = node.wallet()
                 .create_coin_tx(Address::from_public_key(&peer_info.public_key), 1000);
             let signed_tx = node.sign_transaction(tx);
-            genesis_wallet
+            node.wallet_mut()
                 .apply_tx(signed_tx.clone())
                 .expect("known valid tx");
             node.broadcast_transaction(signed_tx);
