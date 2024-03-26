@@ -1,6 +1,6 @@
 use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use clap::Parser;
 
@@ -77,6 +77,8 @@ fn main() {
     node.wallet_mut().apply_tx(signed_tx.clone()).unwrap();
     node.broadcast_transaction(signed_tx.clone());
 
+    let start = Instant::now();
+
     for (recipient, message) in messages {
         println!(
             "Sending message to {recipient}. Available funds: {}",
@@ -96,9 +98,9 @@ fn main() {
         node.broadcast_transaction(signed_tx.clone());
     }
 
-    // Measure the time to broadcast all those transactions
     while node.has_pending_transactions() {
         node.step(&mut network);
         network.await_events(Some(Duration::from_millis(15)));
     }
+    println!("Time to settle: {:?}", start.elapsed());
 }
