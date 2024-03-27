@@ -24,7 +24,7 @@ pub struct Hash(pub [u8; 32]);
 
 impl Hash {
     pub fn digest<T: Serialize>(data: T) -> Self {
-        let data_encoded = serde_json::to_vec(&data).unwrap();
+        let data_encoded = bincode::serialize(&data).unwrap();
         Self(Sha256::digest(data_encoded).into())
     }
 }

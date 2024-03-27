@@ -8,7 +8,6 @@ use crate::crypto::{Address, PrivateKey, PublicKey};
 use crate::network::broadcast::Broadcaster;
 use crate::network::discovery::{bootstrap_helper, discover_peers};
 use crate::node::{Message, Node};
-use crate::wallet::Wallet;
 
 const GENESIS_FUNDS_PER_NODE: u64 = 1000;
 
@@ -75,7 +74,8 @@ pub fn bootstrap(config: BootstrapConfig) -> (Node, Broadcaster<Message>, usize,
             if peer_info.public_key == genesis_validator {
                 continue;
             }
-            let tx = node.wallet()
+            let tx = node
+                .wallet()
                 .create_coin_tx(Address::from_public_key(&peer_info.public_key), 1000);
             let signed_tx = node.sign_transaction(tx);
             node.wallet_mut()

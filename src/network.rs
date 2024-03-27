@@ -1,4 +1,4 @@
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufReader, Write};
 use std::net::TcpStream;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::Duration;
@@ -8,33 +8,26 @@ use serde::{de::DeserializeOwned, Serialize};
 pub mod broadcast;
 pub mod discovery;
 
-/// A wrapper over a TCP connection that is able to send and receive data using line delimited
-/// JSON.
-struct TypedJsonStream {
+/// A wrapper over a TCP connection that is able to send and receive typed data
+struct TypedStream {
     /// The underlying TCP stream.
     stream: BufReader<TcpStream>,
-    /// A temporary buffer to hold the JSON data before decoding.
-    buf: String,
 }
 
-impl TypedJsonStream {
+impl TypedStream {
     fn new(stream: TcpStream) -> Self {
         Self {
             stream: BufReader::new(stream),
-            buf: String::new(),
         }
     }
 
     fn send<T: Serialize>(&mut self, msg: &T) {
-        serde_json::to_writer(self.stream.get_mut(), &msg).unwrap();
-        self.stream.get_mut().write_all(&[b'\n']).unwrap();
+        bincode::serialize_into(self.stream.get_mut(), &msg).unwrap();
         self.stream.get_mut().flush().unwrap();
     }
 
     fn recv<T: DeserializeOwned>(&mut self) -> T {
-        self.buf.clear();
-        self.stream.read_line(&mut self.buf).unwrap();
-        serde_json::from_str(&self.buf).unwrap()
+        bincode::deserialize_from(&mut self.stream).unwrap()
     }
 }
 

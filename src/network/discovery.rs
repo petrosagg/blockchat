@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::network::TypedJsonStream;
+use crate::network::TypedStream;
 
 /// Connects to the specified bootstrap server and returns a list of addreses for all the nodes in
 /// the network.
@@ -19,7 +19,7 @@ where
             Err(_) => std::thread::sleep(Duration::from_millis(200)),
         }
     };
-    let mut stream = TypedJsonStream::new(socket);
+    let mut stream = TypedStream::new(socket);
 
     stream.send(&data);
     (stream.recv(), stream.recv(), stream.recv())
@@ -39,7 +39,7 @@ pub fn bootstrap_helper<D1, D2>(
     let mut peer_data = vec![];
     for _ in 0..expected_peers {
         let socket = listener.accept().unwrap().0;
-        let mut stream = TypedJsonStream::new(socket);
+        let mut stream = TypedStream::new(socket);
         let data = stream.recv::<D1>();
         let index = streams.len();
         streams.push((index, stream));

@@ -1,6 +1,6 @@
 //! Implementation of a broadcasting network
 
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufReader, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::Duration;
@@ -32,22 +32,12 @@ impl<T: Serialize + DeserializeOwned + Clone + Send + 'static> Broadcaster<T> {
         for mut socket in sockets {
             let mut read_socket = BufReader::new(socket.try_clone().unwrap());
             let read_tx = read_tx.clone();
-            std::thread::spawn(move || {
-                let mut buf = String::new();
-                loop {
-                    buf.clear();
-                    match read_socket.read_line(&mut buf) {
-                        Ok(0) => {
-                            log::warn!("Peer EOF");
-                            return;
-                        }
-                        Ok(_) => {
-                            read_tx.send(serde_json::from_str(&buf).unwrap()).unwrap();
-                        }
-                        Err(err) => {
-                            log::error!("Connection error: {err}");
-                            return;
-                        }
+            std::thread::spawn(move || loop {
+                match bincode::deserialize_from(&mut read_socket) {
+                    Ok(msg) => read_tx.send(msg).unwrap(),
+                    Err(err) => {
+                        log::error!("Connection error: {err}");
+                        return;
                     }
                 }
             });
@@ -55,8 +45,7 @@ impl<T: Serialize + DeserializeOwned + Clone + Send + 'static> Broadcaster<T> {
             let (write_tx, write_rx) = mpsc::channel();
             std::thread::spawn(move || {
                 while let Ok(msg) = write_rx.recv() {
-                    serde_json::to_writer(&mut socket, &msg).unwrap();
-                    socket.write_all(&[b'\n']).unwrap();
+                    bincode::serialize_into(&mut socket, &msg).unwrap();
                     socket.flush().unwrap();
                 }
             });
