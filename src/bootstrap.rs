@@ -9,8 +9,6 @@ use crate::network::broadcast::Broadcaster;
 use crate::network::discovery::{bootstrap_helper, discover_peers};
 use crate::node::{Message, Node};
 
-const GENESIS_FUNDS_PER_NODE: u64 = 1000;
-
 pub struct BootstrapConfig {
     /// Whether this node is responsible for running the bootstrap helper
     pub bootstrap_leader: bool,
@@ -26,6 +24,8 @@ pub struct BootstrapConfig {
     pub public_key: PublicKey,
     /// The private key of this node.
     pub private_key: PrivateKey,
+    /// The amount of BCC that each node gets after bootstrap
+    pub genesis_funds_per_node: u64,
 }
 
 /// The peer info exchanged during discovery.
@@ -57,7 +57,7 @@ pub fn bootstrap(config: BootstrapConfig) -> (Node, Broadcaster<Message>, usize,
     let peer_addrs: Vec<_> = peer_infos.iter().map(|info| info.listen_addr).collect();
     let mut network = Broadcaster::<Message>::new(listener, &peer_addrs, my_index);
 
-    let genesis_funds = GENESIS_FUNDS_PER_NODE * (config.peers as u64);
+    let genesis_funds = config.genesis_funds_per_node * (config.peers as u64);
 
     let mut node = Node::new(
         format!("node-{my_index}"),
@@ -74,9 +74,10 @@ pub fn bootstrap(config: BootstrapConfig) -> (Node, Broadcaster<Message>, usize,
             if peer_info.public_key == genesis_validator {
                 continue;
             }
-            let tx = node
-                .wallet()
-                .create_coin_tx(Address::from_public_key(&peer_info.public_key), 1000);
+            let tx = node.wallet().create_coin_tx(
+                Address::from_public_key(&peer_info.public_key),
+                config.genesis_funds_per_node,
+            );
             let signed_tx = node.sign_transaction(tx);
             node.wallet_mut()
                 .apply_tx(signed_tx.clone())

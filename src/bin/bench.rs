@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -50,6 +51,9 @@ fn main() {
         listen_ip: args.listen_ip,
         public_key,
         private_key,
+        // Give more initial funds so that the network can run through the required number of
+        // transactions.
+        genesis_funds_per_node: 10_000,
     };
 
     let (mut node, mut network, my_index, peers) = bootstrap::bootstrap(config);
@@ -65,42 +69,58 @@ fn main() {
         }
     }
 
-    // Run the node until we get the initial funds
+    // Run the node until we get the genesis funds
+    println!("Waiting for funds");
     while node.wallet().available_funds() == 0 {
         node.step(&mut network);
         network.await_events(Some(Duration::from_millis(15)));
     }
 
-    // Run the node until we get the initial funds
+    // Set up staking of this node
+    println!("Setting up stake");
     let tx = node.wallet().create_stake_tx(args.stake);
     let signed_tx = node.sign_transaction(tx);
     node.wallet_mut().apply_tx(signed_tx.clone()).unwrap();
     node.broadcast_transaction(signed_tx.clone());
 
+    while node.total_transactions() != (2 * args.peers) {
+        node.step(&mut network);
+        network.await_events(Some(Duration::from_millis(15)));
+    }
+
     let start = Instant::now();
 
     for (recipient, message) in messages {
-        println!(
-            "Sending message to {recipient}. Available funds: {}",
-            node.wallet().available_funds()
-        );
         let tx = node.wallet().create_message_tx(recipient, message);
-        if node.wallet().available_funds() < tx.cost() {
-            println!("Waiting for more funds");
-            while node.wallet().available_funds() < tx.cost() {
-                node.step(&mut network);
-                network.await_events(Some(Duration::from_millis(15)));
-            }
-            println!("Got more funds");
-        }
         let signed_tx = node.sign_transaction(tx);
         node.wallet_mut().apply_tx(signed_tx.clone()).unwrap();
         node.broadcast_transaction(signed_tx.clone());
     }
 
-    while node.has_pending_transactions() {
+    while node.total_transactions() != (2 * args.peers + 240) {
         node.step(&mut network);
         network.await_events(Some(Duration::from_millis(15)));
     }
-    println!("Time to settle: {:?}", start.elapsed());
+
+    let mut block_counts = HashMap::new();
+    for block in node.blockchain() {
+        *block_counts.entry(block.public_key.clone()).or_insert(0) += 1;
+    }
+    for (i, (_, count)) in block_counts.into_iter().enumerate() {
+        println!("Node {i} minted {count} blocks");
+    }
+
+    let total_blocks = node.blockchain().len() as f64;
+    let total_txs: usize = node
+        .blockchain()
+        .iter()
+        .map(|block| block.data.transactions.len())
+        .sum();
+    let total_txs = total_txs as f64;
+    let total_time = (start.elapsed().as_millis() as f64) / 1000.0;
+    let throughput = total_txs / total_time;
+    let block_time = total_blocks / total_time;
+
+    println!("Throughput {throughput}tx/s");
+    println!("Block time {block_time}blocks/s");
 }

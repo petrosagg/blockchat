@@ -58,6 +58,7 @@ async fn main() {
         listen_ip: args.listen_ip,
         public_key,
         private_key,
+        genesis_funds_per_node: 1000,
     };
 
     let (node, mut network, my_index, _) = bootstrap::bootstrap(config);

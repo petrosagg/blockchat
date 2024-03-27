@@ -12,7 +12,7 @@ use crate::error::{Error, Result};
 use crate::network::Network;
 use crate::wallet::{Transaction, TransactionKind, Wallet};
 
-const MINT_INTERVAL: Duration = Duration::from_secs(10);
+const MINT_INTERVAL: Duration = Duration::from_secs(1);
 
 pub struct Node {
     // The name of this node. Used for logging
@@ -143,6 +143,13 @@ impl Node {
         &self.blockchain
     }
 
+    pub fn total_transactions(&self) -> usize {
+        self.blockchain
+            .iter()
+            .map(|block| block.data.transactions.len())
+            .sum()
+    }
+
     /// Reports whether this node is aware of non-confirmed transactions
     pub fn has_pending_transactions(&self) -> bool {
         !self.pending_transactions.is_empty()
@@ -233,41 +240,41 @@ impl Node {
         let mut transactions = Vec::new();
 
         for (key, tx) in pending_transactions {
-            let sender = tx.data.sender_address.clone();
-            let sender_wallet = tmp_wallets
-                .entry(sender.clone())
-                .or_insert_with(|| Wallet::from_address(sender.clone()));
+            if transactions.len() < self.capacity {
+                let sender = tx.data.sender_address.clone();
+                let sender_wallet = tmp_wallets
+                    .entry(sender.clone())
+                    .or_insert_with(|| Wallet::from_address(sender.clone()));
 
-            match sender_wallet.apply_tx(tx.clone()) {
-                Err(err @ Error::NonceReused(_, _)) => {
-                    log::trace!("{}: dropping invalid tx {:?}: {err}", self.name, tx.hash);
-                    continue;
-                }
-                Err(_) => {
-                    self.pending_transactions.insert(key, tx);
-                    continue;
-                }
-                Ok(_) => match tx.data.receiver() {
-                    Some(receiver) => {
-                        let receiver_wallet = tmp_wallets
-                            .entry(receiver.clone())
-                            .or_insert_with(|| Wallet::from_address(receiver.clone()));
+                match sender_wallet.apply_tx(tx.clone()) {
+                    Err(err @ Error::NonceReused(_, _)) => {
+                        log::trace!("{}: dropping invalid tx {:?}: {err}", self.name, tx.hash);
+                        continue;
+                    }
+                    Err(_) => {
+                        self.pending_transactions.insert(key, tx);
+                        continue;
+                    }
+                    Ok(_) => match tx.data.receiver() {
+                        Some(receiver) => {
+                            let receiver_wallet = tmp_wallets
+                                .entry(receiver.clone())
+                                .or_insert_with(|| Wallet::from_address(receiver.clone()));
 
-                        if sender != receiver {
-                            match receiver_wallet.apply_tx(tx.clone()) {
-                                Ok(_) => {}
-                                Err(_) => {
-                                    self.pending_transactions.insert(key, tx);
-                                    continue;
+                            if sender != receiver {
+                                match receiver_wallet.apply_tx(tx.clone()) {
+                                    Ok(_) => {}
+                                    Err(_) => {
+                                        self.pending_transactions.insert(key, tx);
+                                        continue;
+                                    }
                                 }
                             }
                         }
-                    }
-                    None => {}
-                },
-            }
+                        None => {}
+                    },
+                }
 
-            if transactions.len() < self.capacity {
                 transactions.push(tx);
             } else {
                 self.pending_transactions.insert(key, tx);
@@ -366,13 +373,13 @@ pub enum Message {
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Block {
     /// The creation timestamp of this block
-    timestamp: DateTime<Utc>,
+    pub timestamp: DateTime<Utc>,
     /// The list of transactions contained in this block.
-    transactions: Vec<Signed<Transaction>>,
+    pub transactions: Vec<Signed<Transaction>>,
     /// The public key of the node that minted this block.
-    validator: Address,
+    pub validator: Address,
     /// The hash of the parent block.
-    parent_hash: Hash,
+    pub parent_hash: Hash,
 }
 
 #[cfg(test)]
