@@ -120,6 +120,7 @@ mod test {
                 listen_ip,
                 public_key,
                 private_key,
+                genesis_funds_per_node: 1000,
             };
             let handle = std::thread::spawn(move || {
                 let (mut node, mut network, _, _) = bootstrap(config);
@@ -144,6 +145,7 @@ mod test {
             listen_ip,
             public_key,
             private_key,
+            genesis_funds_per_node: 1000,
         };
         let (mut node, mut network, _, _) = bootstrap(config);
         loop {
