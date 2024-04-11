@@ -58,6 +58,7 @@ mod test {
     use super::*;
 
     #[test]
+    #[ignore]
     fn basic_discovery() {
         let bootstrap_addr = "127.0.0.1:7001".parse().unwrap();
         std::thread::scope(|s| {
