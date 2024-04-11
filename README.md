@@ -4,8 +4,10 @@ Semester long project for the Distributed Systems class at NTUA.
 
 ## Assignment and final report
 
-The description of the assignment can be found in `DistributedProject2024.pdf`
-and the final report in `BlockChat.pdf`.
+The description of the assignment can be found in
+[DistributedProject2024.pdf](https://github.com/petrosagg/blockchat/blob/main/DistributedProject2024.pdf)
+and the final report in
+[BlockChat.pdf](https://github.com/petrosagg/blockchat/blob/main/BlockChat.pdf)
 
 ## Running
 
